@@ -418,7 +418,7 @@ Low Stock Alert
 
 ---
 
-# Sprint 12
+# ✅ Sprint 12
 
 ## Reports
 
@@ -440,7 +440,7 @@ CSV Export
 
 ---
 
-# Sprint 13
+# ✅ Sprint 13
 
 ## Staff
 
@@ -456,7 +456,7 @@ Permissions
 
 ---
 
-# Sprint 14
+# ✅ Sprint 14
 
 ## Settings
 

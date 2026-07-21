@@ -192,8 +192,8 @@ export function POSPage() {
       const pk = import.meta.env.VITE_PAYSTACK_PUBLIC_KEY;
       const ref = `PAY-${Date.now()}`;
       
-      if (!pk || pk === 'pk_test_placeholder') {
-        // Open high-fidelity simulator dialog
+      if (!pk || pk === 'pk_test_placeholder' || !pk.startsWith('pk_')) {
+        // Open high-fidelity simulator dialog if no valid public key configured
         setPaystackReference(ref);
         setPaystackSimStep(1);
         setPaystackCardNumber('');
@@ -215,21 +215,73 @@ export function POSPage() {
         }
 
         const activeCustomer = customers.find((c) => c.id === customerId);
-        const handler = (window as any).PaystackPop.setup({
-          key: pk,
-          email: activeCustomer?.email || 'walkin_customer@xyntra.com',
-          amount: Math.round(grandTotal * 100),
-          currency: 'NGN',
-          ref,
-          callback: async (response: any) => {
-            await executeFinalCheckout('Success', 'Completed', response.reference || ref);
-          },
-          onClose: () => {
-            toast.info('Paystack checkout window closed');
-            setIsSubmittingCheckout(false);
-          },
-        });
-        handler.openIframe();
+        const customerEmail = activeCustomer?.email || 'walkin_customer@xyntra.com';
+        const amountInKobo = Math.round(grandTotal * 100);
+
+        const handleSuccess = function (response: any) {
+          const paymentRef = response?.reference || response?.trxref || ref;
+          executeFinalCheckout('Success', 'Completed', paymentRef);
+        };
+
+        const handleClose = function () {
+          toast.info('Paystack checkout window closed');
+          setIsSubmittingCheckout(false);
+        };
+
+        const PaystackObj = (window as any).PaystackPop;
+
+        if (PaystackObj) {
+          // If setup method exists (Standard Paystack Inline v1)
+          if (typeof PaystackObj.setup === 'function') {
+            const handler = PaystackObj.setup({
+              key: pk,
+              email: customerEmail,
+              amount: amountInKobo,
+              currency: 'NGN',
+              ref: ref,
+              callback: handleSuccess,
+              onSuccess: handleSuccess,
+              onClose: handleClose,
+              onCancel: handleClose,
+            });
+
+            if (handler && typeof handler.openIframe === 'function') {
+              handler.openIframe();
+            } else if (handler && typeof handler.open === 'function') {
+              handler.open();
+            }
+            return;
+          }
+
+          // If instance constructible (Paystack Inline v2)
+          if (typeof PaystackObj === 'function') {
+            const paystack = new PaystackObj();
+            const config = {
+              key: pk,
+              email: customerEmail,
+              amount: amountInKobo,
+              currency: 'NGN',
+              ref: ref,
+              callback: handleSuccess,
+              onSuccess: handleSuccess,
+              onClose: handleClose,
+              onCancel: handleClose,
+            };
+
+            if (typeof paystack.newTransaction === 'function') {
+              paystack.newTransaction(config);
+            } else if (typeof paystack.checkout === 'function') {
+              paystack.checkout(config);
+            } else {
+              toast.error('Unable to open Paystack payment popup');
+              setIsSubmittingCheckout(false);
+            }
+            return;
+          }
+        }
+
+        toast.error('Paystack SDK failed to initialize');
+        setIsSubmittingCheckout(false);
       } catch (err: any) {
         toast.error(err.message || 'Paystack initialization failed');
         setIsSubmittingCheckout(false);

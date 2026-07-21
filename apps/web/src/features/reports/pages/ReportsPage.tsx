@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuthStore } from '../../../stores/auth.store';
+import { XyntraSpinner } from '../../../components/XyntraSpinner';
 import { transactionsApi } from '../../transactions/services/transactions.api';
 import { categoriesApi } from '../../categories/services/categories.api';
 import type { FullTransaction, FullTransactionItem } from '../../transactions/services/transactions.api';
@@ -512,9 +513,8 @@ export function ReportsPage() {
         </div>
 
         {isLoading ? (
-          <div className="py-12 text-center text-slate-450">
-            <RefreshCw className="h-6 w-6 animate-spin mx-auto mb-1 text-blue-600" />
-            Loading product tables...
+          <div className="py-8">
+            <XyntraSpinner size="sm" />
           </div>
         ) : productReports.length === 0 ? (
           <div className="py-12 text-center text-slate-400 text-xs italic">

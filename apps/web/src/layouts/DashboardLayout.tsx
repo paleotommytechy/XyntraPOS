@@ -2,20 +2,21 @@ import { useState } from 'react';
 import { Navigate, Link, useLocation, Outlet } from 'react-router-dom';
 import { useAuthStore } from '../stores/auth.store';
 import { useAuth } from '../features/auth/hooks/useAuth';
-import { 
-  LayoutDashboard, 
-  ShoppingBag, 
-  Users, 
-  Layers, 
-  BarChart3, 
-  Settings, 
-  LogOut, 
-  Sun, 
-  Moon, 
-  Menu, 
+import {
+  LayoutDashboard,
+  ShoppingBag,
+  Users,
+  Layers,
+  BarChart3,
+  Settings,
+  LogOut,
+  Sun,
+  Moon,
+  Menu,
   X,
   Receipt,
-  Package
+  Package,
+  UserCheck
 } from 'lucide-react';
 
 export function DashboardLayout() {
@@ -46,6 +47,7 @@ export function DashboardLayout() {
     { label: 'Customers', path: '/customers', icon: Users },
     { label: 'Transactions', path: '/transactions', icon: Receipt },
     { label: 'Reports', path: '/reports', icon: BarChart3 },
+    { label: 'Staff & Team', path: '/staff', icon: UserCheck },
     { label: 'Settings', path: '/settings', icon: Settings },
   ];
 
@@ -53,14 +55,12 @@ export function DashboardLayout() {
     <div className="min-h-screen flex bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-200">
       {/* Desktop Sidebar */}
       <aside className="hidden md:flex flex-col w-64 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800">
-        <div className="h-16 flex items-center px-6 border-b border-slate-200 dark:border-slate-800">
-          <div className="flex items-center gap-2">
-            <div className="h-8 w-8 rounded-lg bg-blue-600 flex items-center justify-center text-white font-bold">
-              X
-            </div>
-            <span className="font-bold text-lg">XyntraPOS</span>
+        <div className="h-16 flex items-center justify-center px-6 border-b border-slate-200 dark:border-slate-800">
+          <div className="w-full py-1 px-3 bg-slate-100 dark:bg-slate-800/80 rounded-lg border border-slate-200/60 dark:border-slate-700/60 shadow-sm flex items-center justify-center">
+            <img src="/logo.png" alt="XyntraPOS" className="h-10 w-full object-contain" />
           </div>
         </div>
+
 
         {/* Business details */}
         <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/20">
@@ -78,11 +78,10 @@ export function DashboardLayout() {
               <Link
                 key={item.path}
                 to={item.path}
-                className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
-                  isActive
-                    ? 'bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400'
-                    : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100'
-                }`}
+                className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all ${isActive
+                  ? 'bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400'
+                  : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100'
+                  }`}
               >
                 <Icon className="h-4 w-4" />
                 {item.label}
@@ -118,12 +117,12 @@ export function DashboardLayout() {
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Mobile Header */}
         <header className="h-16 flex items-center justify-between px-6 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 md:hidden">
-          <div className="flex items-center gap-2">
-            <div className="h-8 w-8 rounded-lg bg-blue-600 flex items-center justify-center text-white font-bold">
-              X
+          <div className="flex items-center">
+            <div className="py-1 px-2.5 bg-slate-100 dark:bg-slate-800/80 rounded-lg border border-slate-200/60 dark:border-slate-700/60 shadow-sm flex items-center justify-center">
+              <img src="/logo.png" alt="XyntraPOS" className="h-9 w-28 object-contain" />
             </div>
-            <span className="font-bold">XyntraPOS</span>
           </div>
+
 
           <div className="flex items-center gap-2">
             <button
@@ -159,11 +158,10 @@ export function DashboardLayout() {
           {/* Drawer content */}
           <aside className="relative flex flex-col w-64 bg-white dark:bg-slate-900 h-full border-r border-slate-200 dark:border-slate-800">
             <div className="h-16 flex items-center justify-between px-6 border-b border-slate-200 dark:border-slate-800">
-              <div className="flex items-center gap-2">
-                <div className="h-8 w-8 rounded-lg bg-blue-600 flex items-center justify-center text-white font-bold">
-                  X
+              <div className="flex items-center">
+                <div className="py-1 px-2.5 bg-slate-100 dark:bg-slate-800/80 rounded-lg border border-slate-200/60 dark:border-slate-700/60 shadow-sm flex items-center justify-center">
+                  <img src="/logo.png" alt="XyntraPOS" className="h-9 w-28 object-contain" />
                 </div>
-                <span className="font-bold">XyntraPOS</span>
               </div>
               <button
                 onClick={() => setIsSidebarOpen(false)}
@@ -188,11 +186,10 @@ export function DashboardLayout() {
                     key={item.path}
                     to={item.path}
                     onClick={() => setIsSidebarOpen(false)}
-                    className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
-                      isActive
-                        ? 'bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400'
-                        : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100'
-                    }`}
+                    className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all ${isActive
+                      ? 'bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400'
+                      : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100'
+                      }`}
                   >
                     <Icon className="h-4 w-4" />
                     {item.label}

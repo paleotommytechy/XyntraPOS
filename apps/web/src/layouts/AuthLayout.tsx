@@ -18,9 +18,7 @@ export function AuthLayout() {
       <div className="lg:col-span-5 flex flex-col justify-center px-6 py-12 sm:px-12 xl:px-20 relative overflow-hidden bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800">
         <div className="mx-auto w-full max-w-md space-y-8 z-10">
           <div className="flex items-center gap-2.5">
-            <div className="h-9 w-9 rounded-lg bg-blue-600 flex items-center justify-center text-white font-bold text-lg shadow-md shadow-blue-500/20">
-              X
-            </div>
+            <img src="/logo.png" alt="XyntraPOS" className="h-9 w-9 object-contain rounded-lg shadow-md shadow-blue-500/10" />
             <span className="text-xl font-bold tracking-tight text-slate-900 dark:text-white">
               Xyntra<span className="text-blue-600">POS</span>
             </span>

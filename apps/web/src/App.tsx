@@ -15,6 +15,8 @@ const queryClient = new QueryClient({
   },
 });
 
+import { XyntraSpinner } from './components/XyntraSpinner';
+
 function App() {
   const { isLoading, setSession, setLoading, theme } = useAuthStore();
 
@@ -46,16 +48,7 @@ function App() {
   }, [setSession, setLoading, theme]);
 
   if (isLoading) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-950 transition-colors duration-200">
-        <div className="flex flex-col items-center gap-4">
-          <div className="h-10 w-10 border-4 border-blue-600/20 border-t-blue-600 rounded-full animate-spin" />
-          <span className="text-xs font-semibold tracking-widest text-slate-500 dark:text-slate-400 animate-pulse uppercase">
-            Loading Workspace...
-          </span>
-        </div>
-      </div>
-    );
+    return <XyntraSpinner size="full" />;
   }
 
   return (

@@ -74,3 +74,68 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Custom XyntraPOS Loading Spinner Styles */
+@keyframes xyntra-shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+@keyframes xyntra-bounce {
+  0%, 80%, 100% {
+    transform: scale(0);
+    opacity: 0.3;
+  }
+  40% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes xyntra-pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 15px rgba(37, 99, 235, 0.4), 0 0 30px rgba(37, 99, 235, 0.1);
+  }
+  50% {
+    box-shadow: 0 0 25px rgba(37, 99, 235, 0.8), 0 0 50px rgba(37, 99, 235, 0.3);
+  }
+}
+
+.xyntra-loader-text {
+  background: linear-gradient(
+    90deg,
+    #2563eb 0%,
+    #3b82f6 25%,
+    #60a5fa 50%,
+    #3b82f6 75%,
+    #2563eb 100%
+  );
+  background-size: 200% auto;
+  color: transparent;
+  -webkit-background-clip: text;
+  background-clip: text;
+  animation: xyntra-shimmer 2.5s linear infinite;
+}
+
+.xyntra-dot-1 {
+  animation: xyntra-bounce 1.4s infinite ease-in-out both;
+  animation-delay: -0.32s;
+}
+
+.xyntra-dot-2 {
+  animation: xyntra-bounce 1.4s infinite ease-in-out both;
+  animation-delay: -0.16s;
+}
+
+.xyntra-dot-3 {
+  animation: xyntra-bounce 1.4s infinite ease-in-out both;
+}
+
+.xyntra-logo-glow {
+  animation: xyntra-pulse-glow 2s infinite ease-in-out;
+}
+

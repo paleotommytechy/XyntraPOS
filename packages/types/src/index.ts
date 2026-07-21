@@ -7,7 +7,13 @@ export interface Business {
   currency: string;
   timezone: string;
   tax_rate: number;
+  tax_enabled?: boolean;
+  vat_number?: string;
   address?: string;
+  receipt_header?: string;
+  receipt_footer?: string;
+  show_cashier_on_receipt?: boolean;
+  low_stock_threshold?: number;
   created_at: string;
   updated_at: string;
 }
@@ -15,10 +21,22 @@ export interface Business {
 export interface UserProfile {
   id: string;
   name: string;
+  email?: string;
   avatar?: string;
   phone?: string;
   role: 'Admin' | 'Manager' | 'Cashier';
   business_id: string;
+  status?: 'Active' | 'Inactive';
+  created_at: string;
+}
+
+export interface StaffInvitation {
+  id: string;
+  business_id: string;
+  email: string;
+  name: string;
+  role: 'Admin' | 'Manager' | 'Cashier';
+  status: 'Pending' | 'Accepted';
   created_at: string;
 }
 
