@@ -302,6 +302,32 @@ export function SettingsPage() {
                 onChange={(e) => setBusinessForm({ ...businessForm, logo: e.target.value })}
               />
 
+              <div className="p-4 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700/60 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                    Business Workspace Code (Share with Staff & Cashiers)
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (business?.id) {
+                        navigator.clipboard.writeText(business.id);
+                        toast.success('Business Workspace Code copied!');
+                      }
+                    }}
+                    className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
+                  >
+                    Copy Code
+                  </button>
+                </div>
+                <div className="font-mono text-sm bg-white dark:bg-slate-900 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200 select-all truncate">
+                  {business?.id || 'NO-CODE-AVAILABLE'}
+                </div>
+                <p className="text-xs text-slate-500">
+                  Cashiers, Sales Persons, and Managers can enter this Workspace Code to join your store directly.
+                </p>
+              </div>
+
               <div className="pt-4 border-t dark:border-slate-800 flex justify-end">
                 <Button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white" disabled={isSaving}>
                   <Save className="h-4 w-4 mr-2" />

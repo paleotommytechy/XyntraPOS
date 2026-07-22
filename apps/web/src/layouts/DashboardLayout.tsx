@@ -55,11 +55,10 @@ export function DashboardLayout() {
     <div className="min-h-screen flex bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-200">
       {/* Desktop Sidebar */}
       <aside className="hidden md:flex flex-col w-64 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800">
-        <div className="h-16 flex items-center justify-center px-6 border-b border-slate-200 dark:border-slate-800">
-          <div className="w-full py-1 px-3 bg-slate-100 dark:bg-slate-800/80 rounded-lg border border-slate-200/60 dark:border-slate-700/60 shadow-sm flex items-center justify-center">
-            <img src="/logo.png" alt="XyntraPOS" className="h-10 w-full object-contain" />
-          </div>
+        <div className="h-16 flex items-center justify-center gap-3 px-5 border-b border-slate-200 dark:border-slate-800">
+          <img src="/l.png" alt="XyntraPOS" className="h-8 w-auto object-contain dark:brightness-110 dark:contrast-125 transition-all" />
         </div>
+
 
 
         {/* Business details */}
@@ -118,9 +117,11 @@ export function DashboardLayout() {
         {/* Mobile Header */}
         <header className="h-16 flex items-center justify-between px-6 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 md:hidden">
           <div className="flex items-center">
-            <div className="py-1 px-2.5 bg-slate-100 dark:bg-slate-800/80 rounded-lg border border-slate-200/60 dark:border-slate-700/60 shadow-sm flex items-center justify-center">
-              <img src="/logo.png" alt="XyntraPOS" className="h-9 w-28 object-contain" />
-            </div>
+            <img
+              src="/logo.png"
+              alt="XyntraPOS"
+              className="h-8 max-w-[130px] object-contain dark:brightness-110 dark:contrast-125 transition-all"
+            />
           </div>
 
 
@@ -159,9 +160,11 @@ export function DashboardLayout() {
           <aside className="relative flex flex-col w-64 bg-white dark:bg-slate-900 h-full border-r border-slate-200 dark:border-slate-800">
             <div className="h-16 flex items-center justify-between px-6 border-b border-slate-200 dark:border-slate-800">
               <div className="flex items-center">
-                <div className="py-1 px-2.5 bg-slate-100 dark:bg-slate-800/80 rounded-lg border border-slate-200/60 dark:border-slate-700/60 shadow-sm flex items-center justify-center">
-                  <img src="/logo.png" alt="XyntraPOS" className="h-9 w-28 object-contain" />
-                </div>
+                <img
+                  src="/logo.png"
+                  alt="XyntraPOS"
+                  className="h-8 max-w-[130px] object-contain dark:brightness-110 dark:contrast-125 transition-all"
+                />
               </div>
               <button
                 onClick={() => setIsSidebarOpen(false)}

@@ -29,9 +29,16 @@ export function StaffPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   
-  // Invite modal state
+  // Invite modal & generated code state
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [generatedCodeInfo, setGeneratedCodeInfo] = useState<{
+    code: string;
+    name: string;
+    email: string;
+    role: string;
+  } | null>(null);
+
   const [inviteForm, setInviteForm] = useState<InviteStaffPayload>({
     email: '',
     name: '',
@@ -77,13 +84,22 @@ export function StaffPage() {
 
     setIsSubmitting(true);
     try {
-      const newStaff = await staffApi.inviteStaffMember(business.id, inviteForm);
-      toast.success(`Invitation sent to ${inviteForm.email}`);
-      setStaffList((prev) => [newStaff, ...prev]);
-      setIsInviteModalOpen(false);
+      const result = await staffApi.inviteStaffMember(business.id, inviteForm);
+      toast.success(`One-Time Code generated for ${inviteForm.name}!`);
+      
+      setStaffList((prev) => [result.profile, ...prev]);
+      
+      // Store generated code info to show success modal step
+      setGeneratedCodeInfo({
+        code: result.inviteCode,
+        name: inviteForm.name,
+        email: inviteForm.email,
+        role: inviteForm.role,
+      });
+
       setInviteForm({ email: '', name: '', phone: '', role: 'Cashier' });
     } catch (err) {
-      toast.error('Failed to invite staff member');
+      toast.error('Failed to generate staff invitation code');
     } finally {
       setIsSubmitting(false);
     }
@@ -353,75 +369,135 @@ export function StaffPage() {
 
       {/* Invite Staff Modal */}
       {isInviteModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
-          <Card className="w-full max-w-md bg-white dark:bg-slate-900 border dark:border-slate-800 shadow-xl p-6 space-y-4 animate-in zoom-in-95 duration-150">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <Card className="w-full max-w-md bg-white dark:bg-slate-900 border dark:border-slate-800 shadow-2xl p-6 space-y-4 animate-in zoom-in-95 duration-150">
             <div className="flex justify-between items-center pb-2 border-b dark:border-slate-800">
               <h3 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
                 <UserPlus className="h-5 w-5 text-blue-600" />
-                Invite New Staff Member
+                {generatedCodeInfo ? 'One-Time Staff Access Code' : 'Add Staff Member & Generate Code'}
               </h3>
               <button
-                onClick={() => setIsInviteModalOpen(false)}
+                onClick={() => {
+                  setIsInviteModalOpen(false);
+                  setGeneratedCodeInfo(null);
+                }}
                 className="text-slate-400 hover:text-slate-600 dark:hover:text-white"
               >
                 ✕
               </button>
             </div>
 
-            <form onSubmit={handleInviteSubmit} className="space-y-4">
-              <Input
-                label="Full Name"
-                placeholder="e.g. Sarah Connor"
-                value={inviteForm.name}
-                onChange={(e) => setInviteForm({ ...inviteForm, name: e.target.value })}
-                required
-              />
+            {generatedCodeInfo ? (
+              /* SUCCESS CODE DISPLAY VIEW */
+              <div className="space-y-4 py-2">
+                <div className="p-3.5 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900/50 rounded-xl text-xs text-emerald-800 dark:text-emerald-300 space-y-1">
+                  <p className="font-bold flex items-center gap-1.5 text-emerald-900 dark:text-emerald-200 text-sm">
+                    <CheckCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                    Role Pre-Assigned: {generatedCodeInfo.role}
+                  </p>
+                  <p>
+                    Staff member <strong>{generatedCodeInfo.name}</strong> (<code>{generatedCodeInfo.email}</code>) can now join your store using this one-time code.
+                  </p>
+                </div>
 
-              <Input
-                label="Email Address"
-                type="email"
-                placeholder="sarah@store.com"
-                value={inviteForm.email}
-                onChange={(e) => setInviteForm({ ...inviteForm, email: e.target.value })}
-                required
-              />
+                <div className="space-y-1 text-center">
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                    One-Time Staff Access Code
+                  </label>
+                  <div className="flex items-center justify-between gap-2 p-3 bg-slate-100 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
+                    <span className="font-mono text-xl font-black text-blue-600 dark:text-blue-400 tracking-wider select-all">
+                      {generatedCodeInfo.code}
+                    </span>
+                    <Button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(generatedCodeInfo.code);
+                        toast.success('One-Time Staff Code copied to clipboard!');
+                      }}
+                      className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-3 py-1.5"
+                    >
+                      Copy Code
+                    </Button>
+                  </div>
+                </div>
 
-              <Input
-                label="Phone Number (Optional)"
-                placeholder="+234 800 000 0000"
-                value={inviteForm.phone}
-                onChange={(e) => setInviteForm({ ...inviteForm, phone: e.target.value })}
-              />
+                <div className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg text-xs text-slate-600 dark:text-slate-400 space-y-1">
+                  <p className="font-semibold text-slate-800 dark:text-slate-200">How to share:</p>
+                  <p>
+                    Hand or message this code to <strong>{generatedCodeInfo.name}</strong>. When they register/sign in with email <code>{generatedCodeInfo.email}</code>, entering this code will automatically grant them their assigned <strong>{generatedCodeInfo.role}</strong> access.
+                  </p>
+                </div>
 
-              <div>
-                <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-                  Assigned Role
-                </label>
-                <select
-                  value={inviteForm.role}
-                  onChange={(e) => setInviteForm({ ...inviteForm, role: e.target.value as any })}
-                  className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="Cashier">Cashier (Sales & POS access)</option>
-                  <option value="Manager">Manager (Inventory, Products & Reports)</option>
-                  <option value="Admin">Admin (Full System & Team Access)</option>
-                </select>
+                <div className="flex justify-end pt-2 border-t dark:border-slate-800">
+                  <Button
+                    type="button"
+                    onClick={() => {
+                      setIsInviteModalOpen(false);
+                      setGeneratedCodeInfo(null);
+                    }}
+                    className="w-full bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900"
+                  >
+                    Done
+                  </Button>
+                </div>
               </div>
+            ) : (
+              /* INPUT FORM VIEW */
+              <form onSubmit={handleInviteSubmit} className="space-y-4">
+                <Input
+                  label="Staff Member Full Name *"
+                  placeholder="e.g. Sarah Connor"
+                  value={inviteForm.name}
+                  onChange={(e) => setInviteForm({ ...inviteForm, name: e.target.value })}
+                  required
+                />
 
-              <div className="flex justify-end gap-3 pt-2">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={() => setIsInviteModalOpen(false)}
-                  disabled={isSubmitting}
-                >
-                  Cancel
-                </Button>
-                <Button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white" disabled={isSubmitting}>
-                  {isSubmitting ? 'Inviting...' : 'Send Invitation'}
-                </Button>
-              </div>
-            </form>
+                <Input
+                  label="Registered Email Address *"
+                  type="email"
+                  placeholder="sarah@store.com"
+                  value={inviteForm.email}
+                  onChange={(e) => setInviteForm({ ...inviteForm, email: e.target.value })}
+                  required
+                />
+
+                <Input
+                  label="Phone Number (Optional)"
+                  placeholder="+234 800 000 0000"
+                  value={inviteForm.phone}
+                  onChange={(e) => setInviteForm({ ...inviteForm, phone: e.target.value })}
+                />
+
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5">
+                    Assigned Staff Role *
+                  </label>
+                  <select
+                    value={inviteForm.role}
+                    onChange={(e) => setInviteForm({ ...inviteForm, role: e.target.value as any })}
+                    className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="Cashier">Cashier (Sales & POS Checkout access)</option>
+                    <option value="Manager">Manager (Inventory, Products & Reports)</option>
+                    <option value="Admin">Administrator (Full Access)</option>
+                  </select>
+                </div>
+
+                <div className="flex justify-end gap-3 pt-2">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => setIsInviteModalOpen(false)}
+                    disabled={isSubmitting}
+                  >
+                    Cancel
+                  </Button>
+                  <Button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white" disabled={isSubmitting}>
+                    {isSubmitting ? 'Generating Code...' : 'Generate One-Time Code'}
+                  </Button>
+                </div>
+              </form>
+            )}
           </Card>
         </div>
       )}

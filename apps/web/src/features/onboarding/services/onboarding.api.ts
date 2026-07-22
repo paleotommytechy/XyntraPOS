@@ -70,4 +70,121 @@ export const onboardingApi = {
 
     return { business, profile };
   },
+
+  async joinWithOneTimeCode(
+    code: string,
+    userId: string,
+    userEmail: string
+  ): Promise<{ business: Business; profile: UserProfile }> {
+    const cleanCode = code.trim().toUpperCase();
+    const cleanEmail = userEmail.trim().toLowerCase();
+
+    if (!cleanCode) {
+      throw new Error('Please enter your One-Time Staff Access Code.');
+    }
+
+    // 1. Search staff_invitations table for matching token
+    const { data: invData } = await supabase
+      .from('staff_invitations')
+      .select('*')
+      .eq('token', cleanCode)
+      .eq('status', 'Pending')
+      .maybeSingle();
+
+    let businessId: string;
+    let assignedRole: 'Admin' | 'Manager' | 'Cashier' = 'Cashier';
+    let assignedName: string = '';
+
+    if (invData) {
+      // Validate that this one-time code matches the registered staff email!
+      if (invData.email && invData.email.toLowerCase() !== cleanEmail) {
+        throw new Error(
+          `This code is assigned to email "${invData.email}". Please sign in with that email address to activate your staff role.`
+        );
+      }
+
+      businessId = invData.business_id;
+      assignedRole = invData.role || 'Cashier';
+      assignedName = invData.name || '';
+
+      // Mark invitation as Accepted (Burn one-time code)
+      await supabase
+        .from('staff_invitations')
+        .update({ status: 'Accepted' })
+        .eq('id', invData.id);
+    } else {
+      // Fallback: Check if code is a direct Business ID or Workspace Name
+      let { data: bizData } = await supabase
+        .from('businesses')
+        .select('*')
+        .eq('id', cleanCode)
+        .maybeSingle();
+
+      if (!bizData) {
+        const { data: nameMatch } = await supabase
+          .from('businesses')
+          .select('*')
+          .ilike('name', `%${cleanCode}%`)
+          .limit(1)
+          .maybeSingle();
+
+        if (nameMatch) {
+          bizData = nameMatch;
+        }
+      }
+
+      if (!bizData) {
+        throw new Error(
+          'Invalid or expired One-Time Code. Please contact your store manager to generate a valid staff code.'
+        );
+      }
+
+      businessId = bizData.id;
+    }
+
+    // 2. Fetch target business
+    const { data: targetBiz, error: bizFetchErr } = await supabase
+      .from('businesses')
+      .select('*')
+      .eq('id', businessId)
+      .single();
+
+    if (bizFetchErr || !targetBiz) {
+      throw new Error('Associated business workspace could not be found.');
+    }
+
+    const business = targetBiz as Business;
+
+    // 3. Update staff user profile with assigned business and assigned role
+    const updateData: any = {
+      business_id: business.id,
+      role: assignedRole,
+    };
+    if (assignedName) {
+      updateData.name = assignedName;
+    }
+
+    const { data: profData, error: profErr } = await supabase
+      .from('profiles')
+      .update(updateData)
+      .eq('id', userId)
+      .select()
+      .single();
+
+    let profile: UserProfile;
+    if (profErr || !profData) {
+      profile = {
+        id: userId,
+        business_id: business.id,
+        role: assignedRole,
+        name: assignedName || userEmail.split('@')[0],
+        email: cleanEmail,
+        created_at: new Date().toISOString(),
+      };
+    } else {
+      profile = profData as UserProfile;
+    }
+
+    return { business, profile };
+  },
 };

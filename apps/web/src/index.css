@@ -139,3 +139,30 @@
   animation: xyntra-pulse-glow 2s infinite ease-in-out;
 }
 
+@keyframes xyntra-text-shimmer {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.xyntra-animated-text {
+  background: linear-gradient(
+    135deg,
+    #2563eb 0%,
+    #3b82f6 25%,
+    #60a5fa 50%,
+    #8b5cf6 75%,
+    #2563eb 100%
+  );
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: xyntra-text-shimmer 4s ease infinite;
+}
+

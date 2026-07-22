@@ -73,7 +73,7 @@ export const authApi = {
     if (!data.user) throw new Error('Sign in failed');
 
     // Fetch user profile
-    const { data: profile, error: profileErr } = await supabase
+    let { data: profile, error: profileErr } = await supabase
       .from('profiles')
       .select('*')
       .eq('id', data.user.id)
@@ -81,6 +81,45 @@ export const authApi = {
 
     if (profileErr) throw profileErr;
     if (!profile) throw new Error('User profile not found');
+
+    // Auto-claim pending staff invitation if profile has no business_id yet
+    if (!profile.business_id && data.user.email) {
+      try {
+        const { data: pendingInv } = await supabase
+          .from('staff_invitations')
+          .select('*')
+          .eq('email', data.user.email.toLowerCase())
+          .eq('status', 'Pending')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (pendingInv) {
+          const { data: updatedProf } = await supabase
+            .from('profiles')
+            .update({
+              business_id: pendingInv.business_id,
+              role: pendingInv.role || 'Cashier',
+              name: pendingInv.name || profile.name,
+            })
+            .eq('id', data.user.id)
+            .select()
+            .single();
+
+          if (updatedProf) {
+            profile = updatedProf as UserProfile;
+          }
+
+          // Burn code / mark invitation accepted
+          await supabase
+            .from('staff_invitations')
+            .update({ status: 'Accepted' })
+            .eq('id', pendingInv.id);
+        }
+      } catch (invErr) {
+        console.warn('Auto-claiming staff invitation check warning:', invErr);
+      }
+    }
 
     // Fetch user business details
     let business: Business | null = null;
@@ -97,6 +136,16 @@ export const authApi = {
     }
 
     return { user: data.user, profile: profile as UserProfile, business };
+  },
+
+  async signInWithGoogle(): Promise<void> {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: `${window.location.origin}/dashboard`,
+      },
+    });
+    if (error) throw error;
   },
 
   async signOut(): Promise<void> {

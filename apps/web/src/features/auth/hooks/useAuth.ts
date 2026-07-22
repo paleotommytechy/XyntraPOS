@@ -89,9 +89,18 @@ export function useAuth() {
     },
   });
 
+  const googleLoginMutation = useMutation({
+    mutationFn: () => authApi.signInWithGoogle(),
+    onError: (error: any) => {
+      toast.error(error.message || 'Google sign-in failed. Please try again.');
+    },
+  });
+
   return {
     login: loginMutation.mutate,
     isLoggingIn: loginMutation.isPending,
+    loginWithGoogle: googleLoginMutation.mutate,
+    isLoggingInWithGoogle: googleLoginMutation.isPending,
     register: registerMutation.mutate,
     isRegistering: registerMutation.isPending,
     logout: logoutMutation.mutate,
