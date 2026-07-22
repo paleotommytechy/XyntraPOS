@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuthStore } from '../../../stores/auth.store';
+import { useIsMobile } from '../../../hooks/useIsMobile';
+import { MobileDesktopRedirect } from '../../../components/mobile/MobileDesktopRedirect';
 import { XyntraSpinner } from '../../../components/XyntraSpinner';
 import { transactionsApi } from '../../transactions/services/transactions.api';
 import { categoriesApi } from '../../categories/services/categories.api';
@@ -40,7 +42,12 @@ interface ProductReport {
 }
 
 export function ReportsPage() {
+  const { isMobileMode } = useIsMobile();
   const { business } = useAuthStore();
+
+  if (isMobileMode) {
+    return <MobileDesktopRedirect featureName="Advanced Analytics & Reports" />;
+  }
   const [transactions, setTransactions] = useState<FullTransaction[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [allTxItems, setAllTxItems] = useState<FullTransactionItem[]>([]);

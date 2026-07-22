@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { useAuthStore } from '../../../stores/auth.store';
+import { useIsMobile } from '../../../hooks/useIsMobile';
+import { MobileProfileView } from '../components/MobileProfileView';
 import { settingsApi } from '../services/settings.api';
 import { Card, Button, Input } from '@xyntra/ui';
 import { 
@@ -20,7 +22,12 @@ import { toast } from 'sonner';
 type TabType = 'business' | 'profile' | 'taxes' | 'receipt' | 'security' | 'preferences';
 
 export function SettingsPage() {
+  const { isMobileMode } = useIsMobile();
   const { business, profile, user, setBusiness, setProfile, theme, setTheme } = useAuthStore();
+
+  if (isMobileMode) {
+    return <MobileProfileView />;
+  }
   const [activeTab, setActiveTab] = useState<TabType>('business');
   const [isSaving, setIsSaving] = useState(false);
 

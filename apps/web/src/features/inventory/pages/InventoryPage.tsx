@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuthStore } from '../../../stores/auth.store';
+import { useIsMobile } from '../../../hooks/useIsMobile';
+import { MobileDesktopRedirect } from '../../../components/mobile/MobileDesktopRedirect';
 import { productsApi } from '../../products/services/products.api';
 import { categoriesApi } from '../../categories/services/categories.api';
 import { inventoryApi } from '../services/inventory.api';
@@ -22,7 +24,12 @@ import {
 import { toast } from 'sonner';
 
 export function InventoryPage() {
+  const { isMobileMode } = useIsMobile();
   const { business, profile } = useAuthStore();
+
+  if (isMobileMode) {
+    return <MobileDesktopRedirect featureName="Inventory Management & Restocking" />;
+  }
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [logs, setLogs] = useState<InventoryLog[]>([]);

@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuthStore } from '../../../stores/auth.store';
+import { useIsMobile } from '../../../hooks/useIsMobile';
+import { MobileDesktopRedirect } from '../../../components/mobile/MobileDesktopRedirect';
 import { customersApi } from '../services/customers.api';
 import type { CreateCustomerInput } from '../services/customers.api';
 import { supabase } from '../../../lib/supabase';
@@ -30,7 +32,17 @@ import {
 import { toast } from 'sonner';
 
 export function CustomersPage() {
+  const { isMobileMode } = useIsMobile();
   const { business } = useAuthStore();
+
+  if (isMobileMode) {
+    return (
+      <MobileDesktopRedirect
+        featureName="Customer Database Management"
+        description="Customer lookup and quick customer creation are built directly into the Mobile POS Console. For full customer editing and CRM management, please switch to the desktop interface."
+      />
+    );
+  }
   
   // Data states
   const [customers, setCustomers] = useState<Customer[]>([]);

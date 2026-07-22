@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useAuthStore } from '../../../stores/auth.store';
+import { useIsMobile } from '../../../hooks/useIsMobile';
+import { MobileTransactionsView } from '../components/MobileTransactionsView';
 import { transactionsApi } from '../services/transactions.api';
 import type { FullTransaction, FullTransactionItem } from '../services/transactions.api';
 import { paymentsApi } from '../../payments/services/payments.api';
@@ -20,7 +22,12 @@ import {
 import { toast } from 'sonner';
 
 export function TransactionsPage() {
+  const { isMobileMode } = useIsMobile();
   const { business } = useAuthStore();
+
+  if (isMobileMode) {
+    return <MobileTransactionsView />;
+  }
   const [transactions, setTransactions] = useState<FullTransaction[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 

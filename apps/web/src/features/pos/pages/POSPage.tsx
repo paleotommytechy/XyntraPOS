@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { useAuthStore } from '../../../stores/auth.store';
 import { useCartStore } from '../../../stores/cart.store';
+import { useIsMobile } from '../../../hooks/useIsMobile';
+import { MobilePOSView } from '../components/MobilePOSView';
 import { productsApi } from '../../products/services/products.api';
 import { categoriesApi } from '../../categories/services/categories.api';
 import { customersApi } from '../../customers/services/customers.api';
@@ -23,7 +25,12 @@ import {
 import { toast } from 'sonner';
 
 export function POSPage() {
+  const { isMobileMode } = useIsMobile();
   const { business, profile } = useAuthStore();
+
+  if (isMobileMode) {
+    return <MobilePOSView />;
+  }
   const {
     items: cartItems,
     customerId,

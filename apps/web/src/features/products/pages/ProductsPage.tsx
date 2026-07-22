@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuthStore } from '../../../stores/auth.store';
+import { useIsMobile } from '../../../hooks/useIsMobile';
+import { MobileProductsView } from '../components/MobileProductsView';
 import { productsApi } from '../services/products.api';
 import { categoriesApi } from '../../categories/services/categories.api';
 import { uploadImageToCloudinary } from '../../../utils/cloudinary';
@@ -30,7 +32,12 @@ import {
 import { toast } from 'sonner';
 
 export function ProductsPage() {
+  const { isMobileMode } = useIsMobile();
   const { business } = useAuthStore();
+
+  if (isMobileMode) {
+    return <MobileProductsView />;
+  }
   const [activeTab, setActiveTab] = useState<'products' | 'categories'>('products');
   
   // Data states

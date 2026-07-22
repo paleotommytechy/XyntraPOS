@@ -14,14 +14,18 @@ import {
   Moon,
   Menu,
   X,
+  UserCheck,
   Receipt,
   Package,
-  UserCheck
 } from 'lucide-react';
+import { useIsMobile } from '../hooks/useIsMobile';
+import { MobileLayout } from './MobileLayout';
+import { Smartphone } from 'lucide-react';
 
 export function DashboardLayout() {
   const { user, profile, business, theme, setTheme } = useAuthStore();
   const { logout, isLoggingOut } = useAuth();
+  const { isMobileMode, desktopOverride, toggleDesktopOverride } = useIsMobile();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const location = useLocation();
 
@@ -33,6 +37,11 @@ export function DashboardLayout() {
   // If user does not have a business linked, redirect to onboarding
   if (!profile?.business_id) {
     return <Navigate to="/onboarding" replace />;
+  }
+
+  // Render Mobile Layout when on mobile viewport and not in desktop override mode
+  if (isMobileMode) {
+    return <MobileLayout />;
   }
 
   const toggleTheme = () => {
@@ -140,6 +149,22 @@ export function DashboardLayout() {
             </button>
           </div>
         </header>
+
+        {/* Desktop Override Banner for Mobile Devices */}
+        {desktopOverride && (
+          <div className="bg-blue-600 text-white px-4 py-2 flex items-center justify-between text-xs font-semibold shadow-sm">
+            <div className="flex items-center gap-2">
+              <Smartphone className="h-4 w-4" />
+              <span>You are viewing the Desktop Version of XyntraPOS.</span>
+            </div>
+            <button
+              onClick={() => toggleDesktopOverride(false)}
+              className="bg-white/20 hover:bg-white/30 text-white px-2.5 py-1 rounded-md transition-colors"
+            >
+              Switch to Touch Mobile View
+            </button>
+          </div>
+        )}
 
         {/* Main Content Area */}
         <main className="flex-1 overflow-y-auto p-6 md:p-8">

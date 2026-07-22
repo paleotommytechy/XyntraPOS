@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../../stores/auth.store';
+import { useIsMobile } from '../../../hooks/useIsMobile';
+import { MobileDashboardView } from '../components/MobileDashboardView';
 import { dashboardApi } from '../services/dashboard.api';
 import type { DashboardMetrics } from '../services/dashboard.api';
 import { Card, CardHeader, CardTitle, CardContent, Button, Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@xyntra/ui';
@@ -17,8 +19,13 @@ import {
 import { toast } from 'sonner';
 
 export function DashboardPage() {
+  const { isMobileMode } = useIsMobile();
   const { business } = useAuthStore();
   const navigate = useNavigate();
+
+  if (isMobileMode) {
+    return <MobileDashboardView />;
+  }
   const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 

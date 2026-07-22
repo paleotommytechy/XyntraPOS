@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuthStore } from '../../../stores/auth.store';
+import { useIsMobile } from '../../../hooks/useIsMobile';
+import { MobileDesktopRedirect } from '../../../components/mobile/MobileDesktopRedirect';
 import { XyntraSpinner } from '../../../components/XyntraSpinner';
 import { staffApi, type InviteStaffPayload } from '../services/staff.api';
 import { usePermissions } from '../hooks/usePermissions';
@@ -22,7 +24,12 @@ import {
 import { toast } from 'sonner';
 
 export function StaffPage() {
+  const { isMobileMode } = useIsMobile();
   const { business, profile: currentProfile } = useAuthStore();
+
+  if (isMobileMode) {
+    return <MobileDesktopRedirect featureName="Staff & Team Role Management" />;
+  }
   const { canManageStaff } = usePermissions();
 
   const [staffList, setStaffList] = useState<UserProfile[]>([]);
