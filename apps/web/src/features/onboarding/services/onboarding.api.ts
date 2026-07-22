@@ -76,73 +76,138 @@ export const onboardingApi = {
     userId: string,
     userEmail: string
   ): Promise<{ business: Business; profile: UserProfile }> {
-    const cleanCode = code.trim().toUpperCase();
-    const cleanEmail = userEmail.trim().toLowerCase();
+    const rawCode = code.trim().toUpperCase();
+    const cleanEmail = (userEmail || '').trim().toLowerCase();
 
-    if (!cleanCode) {
+    if (!rawCode) {
       throw new Error('Please enter your One-Time Staff Access Code.');
     }
 
-    // 1. Search staff_invitations table for matching token
-    const { data: invData } = await supabase
-      .from('staff_invitations')
-      .select('*')
-      .eq('token', cleanCode)
-      .eq('status', 'Pending')
-      .maybeSingle();
+    // Standardize token formats: 'XYN-8K4P92' vs '8K4P92'
+    const fullCode = rawCode.startsWith('XYN-') ? rawCode : `XYN-${rawCode}`;
+    const shortCode = rawCode.replace(/^XYN-/, '');
 
-    let businessId: string;
-    let assignedRole: 'Admin' | 'Manager' | 'Cashier' = 'Cashier';
-    let assignedName: string = '';
+    let matchedInvitation: any = null;
 
-    if (invData) {
-      // Validate that this one-time code matches the registered staff email!
-      if (invData.email && invData.email.toLowerCase() !== cleanEmail) {
-        throw new Error(
-          `This code is assigned to email "${invData.email}". Please sign in with that email address to activate your staff role.`
-        );
-      }
+    // A) Tier 1: Check localStorage for codes created in current workspace/browser
+    try {
+      const localInvitesRaw = localStorage.getItem('xyntra_pending_invitations');
+      if (localInvitesRaw) {
+        const localInvites: any[] = JSON.parse(localInvitesRaw);
+        const match = localInvites.find((inv) => {
+          if (inv.status !== 'Pending') return false;
+          const tokenUpper = (inv.token || '').toUpperCase();
+          return tokenUpper === fullCode || tokenUpper === rawCode || tokenUpper === shortCode;
+        });
 
-      businessId = invData.business_id;
-      assignedRole = invData.role || 'Cashier';
-      assignedName = invData.name || '';
-
-      // Mark invitation as Accepted (Burn one-time code)
-      await supabase
-        .from('staff_invitations')
-        .update({ status: 'Accepted' })
-        .eq('id', invData.id);
-    } else {
-      // Fallback: Check if code is a direct Business ID or Workspace Name
-      let { data: bizData } = await supabase
-        .from('businesses')
-        .select('*')
-        .eq('id', cleanCode)
-        .maybeSingle();
-
-      if (!bizData) {
-        const { data: nameMatch } = await supabase
-          .from('businesses')
-          .select('*')
-          .ilike('name', `%${cleanCode}%`)
-          .limit(1)
-          .maybeSingle();
-
-        if (nameMatch) {
-          bizData = nameMatch;
+        if (match) {
+          matchedInvitation = match;
         }
       }
-
-      if (!bizData) {
-        throw new Error(
-          'Invalid or expired One-Time Code. Please contact your store manager to generate a valid staff code.'
-        );
-      }
-
-      businessId = bizData.id;
+    } catch (e) {
+      console.warn('localStorage lookup exception:', e);
     }
 
-    // 2. Fetch target business
+    // B) Tier 2: Query Supabase staff_invitations table
+    if (!matchedInvitation) {
+      try {
+        const { data: invList } = await supabase
+          .from('staff_invitations')
+          .select('*')
+          .eq('status', 'Pending');
+
+        if (invList && invList.length > 0) {
+          matchedInvitation = invList.find((inv: any) => {
+            const tUpper = (inv.token || '').toUpperCase();
+            return tUpper === fullCode || tUpper === rawCode || tUpper === shortCode;
+          });
+        }
+      } catch (e) {
+        console.warn('Supabase staff_invitations query exception:', e);
+      }
+    }
+
+    // C) Tier 3: Check profiles table if user profile was pre-linked by owner via email
+    if (!matchedInvitation && cleanEmail) {
+      try {
+        const { data: profMatch } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('email', cleanEmail)
+          .not('business_id', 'is', null)
+          .maybeSingle();
+
+        if (profMatch && profMatch.business_id) {
+          matchedInvitation = {
+            business_id: profMatch.business_id,
+            role: profMatch.role || 'Cashier',
+            name: profMatch.name,
+            email: cleanEmail,
+            token: fullCode,
+          };
+        }
+      } catch (e) {
+        console.warn('Profiles query exception:', e);
+      }
+    }
+
+    // D) Tier 4: Direct Business Code fallback
+    if (!matchedInvitation) {
+      try {
+        let { data: bizData } = await supabase
+          .from('businesses')
+          .select('*')
+          .eq('id', rawCode)
+          .maybeSingle();
+
+        if (!bizData) {
+          const { data: nameMatch } = await supabase
+            .from('businesses')
+            .select('*')
+            .ilike('name', `%${rawCode}%`)
+            .limit(1)
+            .maybeSingle();
+
+          if (nameMatch) bizData = nameMatch;
+        }
+
+        if (bizData) {
+          matchedInvitation = {
+            business_id: bizData.id,
+            role: 'Cashier',
+            name: '',
+            email: cleanEmail,
+            token: rawCode,
+          };
+        }
+      } catch (e) {
+        console.warn('Business ID lookup exception:', e);
+      }
+    }
+
+    // If still no invitation match found, throw informative error!
+    if (!matchedInvitation || !matchedInvitation.business_id) {
+      throw new Error(
+        `Invalid or expired One-Time Code (${rawCode}). Please verify the code with your store manager.`
+      );
+    }
+
+    // Email Security Validation: If invitation specified a target staff email, verify match
+    if (
+      matchedInvitation.email &&
+      cleanEmail &&
+      matchedInvitation.email.toLowerCase() !== cleanEmail
+    ) {
+      throw new Error(
+        `This One-Time Code is assigned to email "${matchedInvitation.email}". Please sign in with that email address to activate your staff access.`
+      );
+    }
+
+    const businessId = matchedInvitation.business_id;
+    const assignedRole = matchedInvitation.role || 'Cashier';
+    const assignedName = matchedInvitation.name || '';
+
+    // Fetch target business details
     const { data: targetBiz, error: bizFetchErr } = await supabase
       .from('businesses')
       .select('*')
@@ -150,23 +215,22 @@ export const onboardingApi = {
       .single();
 
     if (bizFetchErr || !targetBiz) {
-      throw new Error('Associated business workspace could not be found.');
+      throw new Error('The business workspace associated with this code could not be found.');
     }
 
     const business = targetBiz as Business;
 
-    // 3. Update staff user profile with assigned business and assigned role
-    const updateData: any = {
+    // Update user profile with business_id and assigned role
+    const updatePayload: any = {
       business_id: business.id,
       role: assignedRole,
     };
-    if (assignedName) {
-      updateData.name = assignedName;
-    }
+    if (assignedName) updatePayload.name = assignedName;
+    if (cleanEmail) updatePayload.email = cleanEmail;
 
     const { data: profData, error: profErr } = await supabase
       .from('profiles')
-      .update(updateData)
+      .update(updatePayload)
       .eq('id', userId)
       .select()
       .single();
@@ -183,6 +247,35 @@ export const onboardingApi = {
       };
     } else {
       profile = profData as UserProfile;
+    }
+
+    // Burn one-time code (Mark invitation accepted in DB & localStorage)
+    if (matchedInvitation.id) {
+      try {
+        await supabase
+          .from('staff_invitations')
+          .update({ status: 'Accepted' })
+          .eq('id', matchedInvitation.id);
+      } catch (e) {
+        console.warn('DB burn code warning:', e);
+      }
+    }
+
+    try {
+      const localInvitesRaw = localStorage.getItem('xyntra_pending_invitations');
+      if (localInvitesRaw) {
+        let localInvites: any[] = JSON.parse(localInvitesRaw);
+        localInvites = localInvites.map((inv) => {
+          const tUpper = (inv.token || '').toUpperCase();
+          if (tUpper === fullCode || tUpper === rawCode || tUpper === shortCode) {
+            return { ...inv, status: 'Accepted' };
+          }
+          return inv;
+        });
+        localStorage.setItem('xyntra_pending_invitations', JSON.stringify(localInvites));
+      }
+    } catch (e) {
+      console.warn('localStorage burn code warning:', e);
     }
 
     return { business, profile };

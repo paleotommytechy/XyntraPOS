@@ -239,9 +239,9 @@ export function OnboardingPage() {
                 type="text"
                 placeholder="e.g. XYN-8K4P92"
                 value={oneTimeCode}
-                onChange={(e) => setOneTimeCode(e.target.value)}
+                onChange={(e) => setOneTimeCode(e.target.value.toUpperCase())}
                 disabled={isLoading}
-                className="font-mono text-center tracking-wider uppercase text-base"
+                className="font-mono text-center tracking-wider uppercase text-base font-bold"
                 required
               />
 
