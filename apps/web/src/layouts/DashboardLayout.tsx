@@ -17,16 +17,22 @@ import {
   UserCheck,
   Receipt,
   Package,
+  Search,
+  Clock,
+  Smartphone,
 } from 'lucide-react';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { MobileLayout } from './MobileLayout';
-import { Smartphone } from 'lucide-react';
+import { CommandPalette } from '../components/CommandPalette';
+import { NotificationCenter } from '../components/NotificationCenter';
 
 export function DashboardLayout() {
   const { user, profile, business, theme, setTheme } = useAuthStore();
   const { logout, isLoggingOut } = useAuth();
   const { isMobileMode, desktopOverride, toggleDesktopOverride } = useIsMobile();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+  const [isClockedIn, setIsClockedIn] = useState(true);
   const location = useLocation();
 
   // If user is not authenticated, redirect to login
@@ -37,6 +43,43 @@ export function DashboardLayout() {
   // If user does not have a business linked, redirect to onboarding
   if (!profile?.business_id) {
     return <Navigate to="/onboarding" replace />;
+  }
+
+  // If staff profile is awaiting owner approval, render pending approval screen
+  if (profile?.status === 'Pending Approval') {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-900 text-white p-6">
+        <div className="max-w-md w-full bg-slate-800 border border-slate-700 rounded-2xl p-8 shadow-2xl text-center space-y-6 animate-in fade-in zoom-in-95">
+          <div className="h-16 w-16 mx-auto rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center">
+            <Clock className="h-8 w-8 animate-pulse" />
+          </div>
+          <div className="space-y-2">
+            <h2 className="text-2xl font-bold text-slate-100">Awaiting Owner Approval</h2>
+            <p className="text-sm text-slate-300">
+              Your account is connected to <span className="font-semibold text-white">{business?.name || 'the business'}</span>.
+            </p>
+            <p className="text-xs text-slate-400 leading-relaxed pt-2">
+              Your access request has been submitted to the Business Owner (Admin). Once approved, you will automatically gain access to your POS portal and features based on your assigned role ({profile.role}).
+            </p>
+          </div>
+          <div className="pt-4 flex flex-col gap-3">
+            <button
+              onClick={() => window.location.reload()}
+              className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl transition-all flex items-center justify-center gap-2"
+            >
+              Check Approval Status
+            </button>
+            <button
+              onClick={() => logout()}
+              disabled={isLoggingOut}
+              className="w-full py-2.5 bg-slate-700 hover:bg-slate-600 text-slate-200 text-sm font-semibold rounded-xl transition-all"
+            >
+              Log Out
+            </button>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   // Render Mobile Layout when on mobile viewport and not in desktop override mode
@@ -62,13 +105,17 @@ export function DashboardLayout() {
 
   return (
     <div className="min-h-screen flex bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-200">
+      {/* Command Palette Modal */}
+      <CommandPalette
+        isOpen={isCommandPaletteOpen}
+        onClose={() => setIsCommandPaletteOpen(false)}
+      />
+
       {/* Desktop Sidebar */}
-      <aside className="hidden md:flex flex-col w-64 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800">
+      <aside className="hidden md:flex flex-col w-64 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 shrink-0">
         <div className="h-16 flex items-center justify-center gap-3 px-5 border-b border-slate-200 dark:border-slate-800">
           <img src="/l.png" alt="XyntraPOS" className="h-8 w-auto object-contain dark:brightness-110 dark:contrast-125 transition-all" />
         </div>
-
-
 
         {/* Business details */}
         <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/20">
@@ -78,7 +125,7 @@ export function DashboardLayout() {
         </div>
 
         {/* Navigation list */}
-        <nav className="flex-1 px-4 py-4 space-y-1">
+        <nav className="flex-1 px-4 py-4 space-y-1 overflow-y-auto">
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = location.pathname === item.path;
@@ -123,6 +170,50 @@ export function DashboardLayout() {
 
       {/* Main Content Pane */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        {/* Desktop Header */}
+        <header className="hidden md:flex h-16 items-center justify-between px-8 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800">
+          {/* Quick Search / Command Palette Button */}
+          <button
+            onClick={() => setIsCommandPaletteOpen(true)}
+            className="flex items-center gap-3 px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700/80 rounded-xl text-xs font-medium text-slate-500 dark:text-slate-400 transition-colors w-72"
+          >
+            <Search className="h-4 w-4 text-slate-400" />
+            <span>Search or type command...</span>
+            <kbd className="ml-auto px-2 py-0.5 text-[10px] font-semibold bg-white dark:bg-slate-900 text-slate-400 rounded border border-slate-200 dark:border-slate-700">
+              Ctrl+K
+            </kbd>
+          </button>
+
+          {/* Right Header Actions */}
+          <div className="flex items-center gap-4">
+            {/* Shift Clock-in badge */}
+            <button
+              onClick={() => setIsClockedIn(!isClockedIn)}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all ${
+                isClockedIn
+                  ? 'bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-950/40 dark:border-emerald-800 dark:text-emerald-400'
+                  : 'bg-slate-100 border-slate-200 text-slate-600 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400'
+              }`}
+              title="Click to toggle Shift Clock status"
+            >
+              <Clock className="h-3.5 w-3.5" />
+              <span>{isClockedIn ? 'Clocked In (Active Shift)' : 'Clocked Out'}</span>
+            </button>
+
+            {/* Notification Center */}
+            <NotificationCenter />
+
+            {/* Theme Toggle */}
+            <button
+              onClick={toggleTheme}
+              className="p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              title="Toggle Light/Dark Theme"
+            >
+              {theme === 'light' ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
+            </button>
+          </div>
+        </header>
+
         {/* Mobile Header */}
         <header className="h-16 flex items-center justify-between px-6 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 md:hidden">
           <div className="flex items-center">
@@ -133,8 +224,14 @@ export function DashboardLayout() {
             />
           </div>
 
-
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => setIsCommandPaletteOpen(true)}
+              className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500"
+            >
+              <Search className="h-5 w-5" />
+            </button>
+            <NotificationCenter />
             <button
               onClick={toggleTheme}
               className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500"

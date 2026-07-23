@@ -55,7 +55,6 @@ export const transactionsApi = {
   },
 
   async refundTransaction(transactionId: string): Promise<void> {
-    // 1. Get transaction and transaction items to restore stock
     const { data: tx, error: txErr } = await supabase
       .from('transactions')
       .select('business_id, payment_status')
@@ -74,7 +73,6 @@ export const transactionsApi = {
 
     if (itemsErr) throw itemsErr;
 
-    // 2. Set statuses to Refunded
     const { error: txUpdateErr } = await supabase
       .from('transactions')
       .update({
@@ -94,12 +92,10 @@ export const transactionsApi = {
 
     if (pmUpdateErr) throw pmUpdateErr;
 
-    // 3. Restore stock and write inventory logs (Postgres trigger handles inventory deductions on POS sale, but let's write refund updates)
     for (const item of items || []) {
       const currentStockVal = item.product.stock_quantity;
       const refundQuantity = item.quantity;
       
-      // Update stock back
       const { error: stockErr } = await supabase
         .from('products')
         .update({
@@ -110,7 +106,6 @@ export const transactionsApi = {
 
       if (stockErr) throw stockErr;
 
-      // Add to inventory logs
       await supabase.from('inventory_logs').insert({
         business_id: tx.business_id,
         product_id: item.product_id,

@@ -1,29 +1,11 @@
 import { supabase } from '../../../lib/supabase';
-import type { UserProfile } from '@xyntra/types';
+import type { UserProfile, AuditLogItem, EmployeeShift, StaffInvitation } from '@xyntra/types';
 
 export interface InviteStaffPayload {
   email: string;
   name: string;
   phone?: string;
   role: 'Admin' | 'Manager' | 'Cashier';
-}
-
-export interface StaffInvitation {
-  id: string;
-  business_id: string;
-  email: string;
-  name: string;
-  phone?: string;
-  role: 'Admin' | 'Manager' | 'Cashier';
-  status: 'Pending' | 'Accepted' | 'Cancelled';
-  token: string;
-  created_at: string;
-}
-
-export interface InviteResult {
-  profile: UserProfile;
-  inviteCode: string;
-  invitation?: StaffInvitation;
 }
 
 export const staffApi = {
@@ -35,202 +17,234 @@ export const staffApi = {
       .order('created_at', { ascending: false });
 
     if (error) {
-      console.error('Error fetching staff members:', error);
-      throw error;
+      console.warn('Staff members fetch notice:', error);
+      return [];
     }
-
-    return (data || []).map((p: any) => ({
-      ...p,
-      status: p.status || 'Active',
-    }));
+    return (data || []) as UserProfile[];
   },
 
-  async getPendingInvitations(businessId: string): Promise<StaffInvitation[]> {
-    // 1. Fetch from Supabase
-    let invitations: StaffInvitation[] = [];
+  async getStaffInvitations(businessId: string): Promise<StaffInvitation[]> {
+    let invList: StaffInvitation[] = [];
     try {
       const { data, error } = await supabase
         .from('staff_invitations')
         .select('*')
         .eq('business_id', businessId)
-        .eq('status', 'Pending')
+        .in('status', ['Pending', 'Awaiting Approval'])
         .order('created_at', { ascending: false });
 
       if (!error && data) {
-        invitations = data as StaffInvitation[];
+        invList = data as unknown as StaffInvitation[];
       }
     } catch (e) {
-      console.warn('Could not fetch staff_invitations from DB:', e);
+      console.warn('DB getStaffInvitations warning:', e);
     }
 
-    // 2. Combine with localStorage cache
+    // Merge with localStorage pending invitations fallback
     try {
-      const localInvitesRaw = localStorage.getItem('xyntra_pending_invitations');
-      if (localInvitesRaw) {
-        const localInvites: StaffInvitation[] = JSON.parse(localInvitesRaw);
-        const filteredLocal = localInvites.filter(
-          (inv) => inv.business_id === businessId && inv.status === 'Pending'
+      const localRaw = localStorage.getItem('xyntra_pending_invitations');
+      if (localRaw) {
+        const localList: any[] = JSON.parse(localRaw);
+        const filtered = localList.filter(
+          (inv) =>
+            inv.business_id === businessId &&
+            (inv.status === 'Pending' || inv.status === 'Awaiting Approval')
         );
-
-        filteredLocal.forEach((loc) => {
-          if (!invitations.some((inv) => inv.token === loc.token)) {
-            invitations.push(loc);
+        filtered.forEach((l) => {
+          if (!invList.some((db) => db.id === l.id || (l.token && db.token === l.token))) {
+            invList.push(l);
           }
         });
       }
-    } catch (e) {
-      console.warn('localStorage read warning:', e);
-    }
+    } catch (e) {}
 
-    return invitations;
+    return invList;
   },
 
-  async inviteStaffMember(businessId: string, payload: InviteStaffPayload): Promise<InviteResult> {
-    // Generate a clean 6-character one-time code: XYN-XXXXXX
-    const randomChars = Math.random().toString(36).substring(2, 8).toUpperCase();
-    const inviteCode = `XYN-${randomChars}`;
-    const cleanEmail = payload.email.trim().toLowerCase();
-    const nowIso = new Date().toISOString();
+  async inviteStaffMember(
+    businessId: string,
+    payload: InviteStaffPayload
+  ): Promise<{ invitation: StaffInvitation; inviteCode: string }> {
+    const inviteCode = Math.floor(100000 + Math.random() * 900000).toString();
+    const invId = 'inv_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
 
-    const invitationData: StaffInvitation = {
-      id: crypto.randomUUID(),
+    const newInvite: StaffInvitation = {
+      id: invId,
       business_id: businessId,
-      email: cleanEmail,
-      name: payload.name.trim(),
-      phone: payload.phone?.trim() || '',
+      email: payload.email,
+      name: payload.name,
+      phone: payload.phone,
       role: payload.role,
       status: 'Pending',
       token: inviteCode,
-      created_at: nowIso,
+      created_at: new Date().toISOString(),
     };
 
-    // 1. Save to localStorage cache for instant cross-tab / local dev sync
-    try {
-      const localInvitesRaw = localStorage.getItem('xyntra_pending_invitations');
-      const localInvites: StaffInvitation[] = localInvitesRaw ? JSON.parse(localInvitesRaw) : [];
-      // Remove older invitations for same email if any
-      const updatedLocal = localInvites.filter((inv) => inv.email !== cleanEmail);
-      updatedLocal.unshift(invitationData);
-      localStorage.setItem('xyntra_pending_invitations', JSON.stringify(updatedLocal));
-    } catch (e) {
-      console.warn('localStorage save warning:', e);
-    }
-
-    // 2. Insert into staff_invitations DB table
-    let invitationRecord: StaffInvitation | undefined = invitationData;
-    try {
-      const { data: invData, error: invError } = await supabase
-        .from('staff_invitations')
-        .insert([
-          {
-            id: invitationData.id,
-            business_id: businessId,
-            email: cleanEmail,
-            name: payload.name.trim(),
-            phone: payload.phone?.trim() || '',
-            role: payload.role,
-            status: 'Pending',
-            token: inviteCode,
-          },
-        ])
-        .select()
-        .single();
-
-      if (!invError && invData) {
-        invitationRecord = invData as StaffInvitation;
-      }
-    } catch (err) {
-      console.warn('staff_invitations table insert exception:', err);
-    }
-
-    // 3. Upsert placeholder profile linked to email & business
-    const newProfile: UserProfile = {
-      id: crypto.randomUUID(),
+    // Write invitation record to Supabase
+    const { error: inviteErr } = await supabase.from('staff_invitations').insert({
       business_id: businessId,
-      name: payload.name.trim(),
-      email: cleanEmail,
-      phone: payload.phone?.trim() || '',
+      email: payload.email.toLowerCase(),
+      name: payload.name,
+      phone: payload.phone,
       role: payload.role,
-      status: 'Active',
-      created_at: nowIso,
-    };
+      token: inviteCode,
+      status: 'Pending',
+    });
 
+    if (inviteErr) console.warn('Staff invitation write notice:', inviteErr);
+
+    // Save to localStorage for instant UI persistence & fallback across refreshes
     try {
-      // Check if profile exists for this email
-      const { data: existingProf } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('email', cleanEmail)
-        .maybeSingle();
+      const localRaw = localStorage.getItem('xyntra_pending_invitations');
+      let localList: any[] = localRaw ? JSON.parse(localRaw) : [];
+      localList = [newInvite, ...localList.filter((i) => i.email !== payload.email)];
+      localStorage.setItem('xyntra_pending_invitations', JSON.stringify(localList));
+    } catch (e) {}
 
-      if (existingProf) {
-        await supabase
-          .from('profiles')
-          .update({
-            business_id: businessId,
-            role: payload.role,
-            name: payload.name.trim(),
-          })
-          .eq('id', existingProf.id);
-      } else {
-        await supabase.from('profiles').insert([newProfile]);
-      }
-    } catch (err) {
-      console.warn('Fallback profile upsert exception:', err);
-    }
-
-    return {
-      profile: newProfile,
-      inviteCode,
-      invitation: invitationRecord,
-    };
+    return { invitation: newInvite, inviteCode };
   },
 
-  async cancelInvitation(invitationId: string): Promise<void> {
-    try {
+  async approveStaffInvitation(
+    invitationId: string,
+    email: string,
+    role: 'Admin' | 'Manager' | 'Cashier'
+  ): Promise<void> {
+    // 1. Update DB staff_invitations status to Accepted
+    await supabase
+      .from('staff_invitations')
+      .update({ status: 'Accepted', role })
+      .eq('id', invitationId);
+
+    // 2. Update profiles status to Active if matching user email exists
+    if (email) {
       await supabase
-        .from('staff_invitations')
-        .update({ status: 'Cancelled' })
-        .eq('id', invitationId);
-    } catch (e) {
-      console.warn('DB cancel invitation exception:', e);
+        .from('profiles')
+        .update({ status: 'Active', role })
+        .eq('email', email.toLowerCase());
     }
 
+    // 3. Update localStorage fallback
     try {
-      const localInvitesRaw = localStorage.getItem('xyntra_pending_invitations');
-      if (localInvitesRaw) {
-        let localInvites: StaffInvitation[] = JSON.parse(localInvitesRaw);
-        localInvites = localInvites.map((inv) =>
-          inv.id === invitationId ? { ...inv, status: 'Cancelled' } : inv
-        );
-        localStorage.setItem('xyntra_pending_invitations', JSON.stringify(localInvites));
+      const localRaw = localStorage.getItem('xyntra_pending_invitations');
+      if (localRaw) {
+        let localList: any[] = JSON.parse(localRaw);
+        localList = localList.filter((inv) => inv.id !== invitationId && inv.token !== invitationId);
+        localStorage.setItem('xyntra_pending_invitations', JSON.stringify(localList));
       }
-    } catch (e) {
-      console.warn('localStorage cancel exception:', e);
-    }
+    } catch (e) {}
   },
 
-  async updateStaffRole(profileId: string, role: 'Admin' | 'Manager' | 'Cashier'): Promise<void> {
-    const { error } = await supabase
-      .from('profiles')
-      .update({ role })
-      .eq('id', profileId);
+  async rejectStaffInvitation(invitationId: string, email?: string): Promise<void> {
+    // 1. Update DB staff_invitations status to Cancelled
+    await supabase
+      .from('staff_invitations')
+      .update({ status: 'Cancelled' })
+      .eq('id', invitationId);
 
-    if (error) {
-      console.error('Error updating staff role:', error);
-      throw error;
+    if (email) {
+      await supabase
+        .from('profiles')
+        .update({ status: 'Inactive' })
+        .eq('email', email.toLowerCase());
     }
+
+    // 2. Update localStorage fallback
+    try {
+      const localRaw = localStorage.getItem('xyntra_pending_invitations');
+      if (localRaw) {
+        let localList: any[] = JSON.parse(localRaw);
+        localList = localList.filter((inv) => inv.id !== invitationId && inv.token !== invitationId);
+        localStorage.setItem('xyntra_pending_invitations', JSON.stringify(localList));
+      }
+    } catch (e) {}
   },
 
-  async updateStaffStatus(profileId: string, status: 'Active' | 'Inactive'): Promise<void> {
+  async updateStaffRole(profileId: string, newRole: 'Admin' | 'Manager' | 'Cashier'): Promise<void> {
     const { error } = await supabase
       .from('profiles')
-      .update({ status })
+      .update({ role: newRole })
       .eq('id', profileId);
 
+    if (error) throw error;
+  },
+
+  async updateStaffStatus(profileId: string, newStatus: string): Promise<void> {
+    const { error } = await supabase
+      .from('profiles')
+      .update({ status: newStatus })
+      .eq('id', profileId);
+
+    if (error) throw error;
+  },
+
+  async getAuditLogs(businessId: string): Promise<AuditLogItem[]> {
+    const { data, error } = await supabase
+      .from('audit_logs')
+      .select(`
+        *,
+        profile:profiles(name)
+      `)
+      .eq('business_id', businessId)
+      .order('created_at', { ascending: false });
+
     if (error) {
-      console.error('Error updating staff status:', error);
-      throw error;
+      console.warn('Audit logs fetch notice:', error);
+      return [];
     }
+    return (data || []) as unknown as AuditLogItem[];
+  },
+
+  async getEmployeeShifts(businessId: string): Promise<EmployeeShift[]> {
+    const { data, error } = await supabase
+      .from('employee_shifts')
+      .select(`
+        *,
+        profile:profiles(name, role)
+      `)
+      .eq('business_id', businessId)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.warn('Shifts fetch notice:', error);
+      return [];
+    }
+    return (data || []) as unknown as EmployeeShift[];
+  },
+
+  async clockInShift(businessId: string, userId: string): Promise<EmployeeShift> {
+    const { data, error } = await supabase
+      .from('employee_shifts')
+      .insert({
+        business_id: businessId,
+        user_id: userId,
+        clock_in: new Date().toISOString(),
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.warn('Clock in notice:', error);
+      return {
+        id: 'shift_' + Date.now(),
+        business_id: businessId,
+        user_id: userId,
+        clock_in: new Date().toISOString(),
+        created_at: new Date().toISOString(),
+      };
+    }
+
+    return data as unknown as EmployeeShift;
+  },
+
+  async clockOutShift(shiftId: string): Promise<void> {
+    const clockOutTime = new Date().toISOString();
+    const { error } = await supabase
+      .from('employee_shifts')
+      .update({
+        clock_out: clockOutTime,
+      })
+      .eq('id', shiftId);
+
+    if (error) console.warn('Clock out notice:', error);
   },
 };

@@ -8,8 +8,8 @@ import { categoriesApi } from '../../categories/services/categories.api';
 import { customersApi } from '../../customers/services/customers.api';
 import { posApi } from '../services/pos.api';
 import type { CheckoutCartItem } from '../services/pos.api';
-import type { Product, Category, Customer } from '@xyntra/types';
-import { Button, Input, Dialog } from '@xyntra/ui';
+import type { Product, Category, Customer, DraftOrder } from '@xyntra/types';
+import { Button, Input, Dialog, PromptModal, ConfirmModal } from '@xyntra/ui';
 import {
   Search,
   ShoppingBag,
@@ -21,8 +21,15 @@ import {
   Minus,
   FileText,
   Image as ImageIcon,
+  Save,
+  CreditCard,
+  Keyboard,
+  Award,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { DraftOrdersModal } from '../components/DraftOrdersModal';
+import { SplitPaymentModal } from '../components/SplitPaymentModal';
+import { KeyboardShortcutsModal } from '../components/KeyboardShortcutsModal';
 
 export function POSPage() {
   const { isMobileMode } = useIsMobile();
@@ -31,6 +38,7 @@ export function POSPage() {
   if (isMobileMode) {
     return <MobilePOSView />;
   }
+
   const {
     items: cartItems,
     customerId,
@@ -47,19 +55,40 @@ export function POSPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [drafts, setDrafts] = useState<DraftOrder[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   // Search & Filters
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Dialog Modals states
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [isReceiptOpen, setIsReceiptOpen] = useState(false);
   const [isAddCustomerOpen, setIsAddCustomerOpen] = useState(false);
+  const [isDraftsModalOpen, setIsDraftsModalOpen] = useState(false);
+  const [isSplitPaymentOpen, setIsSplitPaymentOpen] = useState(false);
+  const [isShortcutsModalOpen, setIsShortcutsModalOpen] = useState(false);
+  const [isClearCartConfirmOpen, setIsClearCartConfirmOpen] = useState(false);
+  const [promptModal, setPromptModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message?: string;
+    defaultValue?: string;
+    inputType?: string;
+    onSubmit: (val: string) => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    defaultValue: '',
+    inputType: 'text',
+    onSubmit: () => {},
+  });
 
   // Checkout states
-  const [paymentProvider, setPaymentProvider] = useState<'Paystack' | 'Cash' | 'Transfer' | 'Card'>('Cash');
+  const [paymentProvider, setPaymentProvider] = useState<'Paystack' | 'Cash' | 'Transfer' | 'Card' | 'Store Credit'>('Cash');
   const [paymentMethod, setPaymentMethod] = useState('Cash Payment');
   const [isSubmittingCheckout, setIsSubmittingCheckout] = useState(false);
   const [completedTransaction, setCompletedTransaction] = useState<any>(null);
@@ -83,6 +112,55 @@ export function POSPage() {
   // Print ref
   const receiptRef = useRef<HTMLDivElement>(null);
 
+  // Hotkey listener for POS
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // F1: Product search
+      if (e.key === 'F1') {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      }
+      // F2: Discount modal focus / alert
+      if (e.key === 'F2') {
+        e.preventDefault();
+        setPromptModal({
+          isOpen: true,
+          title: 'Set Cart Discount',
+          message: 'Enter discount percentage (0 - 100):',
+          defaultValue: cartDiscount.toString(),
+          inputType: 'number',
+          onSubmit: (disc) => {
+            if (disc !== null && disc !== '') {
+              setDiscount(Math.min(100, Math.max(0, parseFloat(disc) || 0)));
+            }
+          },
+        });
+      }
+      // F3 or Ctrl+D: Save draft
+      if (e.key === 'F3' || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd')) {
+        e.preventDefault();
+        handleSaveDraft();
+      }
+      // Space or Enter: Checkout trigger (when not in input)
+      if ((e.key === 'Enter' || e.key === ' ') && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
+        if (cartItems.length > 0 && !isCheckoutOpen && !promptModal.isOpen) {
+          e.preventDefault();
+          setIsCheckoutOpen(true);
+        }
+      }
+      // Esc: Clear cart
+      if (e.key === 'Escape') {
+        if (!isCheckoutOpen && !isDraftsModalOpen && !isSplitPaymentOpen && !isShortcutsModalOpen && !promptModal.isOpen && !isClearCartConfirmOpen) {
+          if (cartItems.length > 0) {
+            setIsClearCartConfirmOpen(true);
+          }
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [cartItems, cartDiscount, isCheckoutOpen, isDraftsModalOpen, isSplitPaymentOpen, isShortcutsModalOpen, promptModal.isOpen, isClearCartConfirmOpen]);
+
   useEffect(() => {
     if (business?.id) {
       loadPOSData();
@@ -93,14 +171,16 @@ export function POSPage() {
     if (!business?.id) return;
     setIsLoading(true);
     try {
-      const [pData, cData, custData] = await Promise.all([
+      const [pData, cData, custData, draftData] = await Promise.all([
         productsApi.getProducts(business.id),
         categoriesApi.getCategories(business.id),
         customersApi.getCustomers(business.id),
+        posApi.getDraftOrders(business.id),
       ]);
       setProducts(pData.filter((p) => p.is_active));
       setCategories(cData);
       setCustomers(custData);
+      setDrafts(draftData);
     } catch (err) {
       toast.error('Failed to load POS catalog data');
     } finally {
@@ -114,6 +194,62 @@ export function POSPage() {
   const taxRate = business?.tax_rate || 0.075;
   const taxAmount = (subtotal - discountAmount) * taxRate;
   const grandTotal = subtotal - discountAmount + taxAmount;
+
+  const handleSaveDraft = async () => {
+    if (!business?.id) return;
+    if (cartItems.length === 0) {
+      toast.error('Cart is empty. Add items to save a draft.');
+      return;
+    }
+    setPromptModal({
+      isOpen: true,
+      title: 'Save Draft Order',
+      message: 'Enter a name/reference for this draft order:',
+      defaultValue: `Cart #${drafts.length + 1}`,
+      inputType: 'text',
+      onSubmit: async (title) => {
+        if (!title || !title.trim()) return;
+
+        try {
+          const draft = await posApi.saveDraftOrder({
+            business_id: business.id,
+            customer_id: customerId,
+            title: title.trim(),
+            items: cartItems,
+            discount: cartDiscount,
+            subtotal,
+            total: grandTotal,
+            created_by: profile?.id,
+          });
+
+          setDrafts([draft, ...drafts]);
+          toast.success('Cart saved to Draft Orders successfully!');
+          clearCart();
+        } catch (err: any) {
+          toast.error('Failed to save draft order');
+        }
+      },
+    });
+  };
+
+  const handleLoadDraft = (draft: DraftOrder) => {
+    clearCart();
+    draft.items.forEach((item) => {
+      for (let i = 0; i < item.quantity; i++) {
+        addToCart(item.product);
+      }
+    });
+    if (draft.customer_id) setCustomerId(draft.customer_id);
+    if (draft.discount) setDiscount(draft.discount);
+    setIsDraftsModalOpen(false);
+    toast.success(`Loaded draft "${draft.title}" into cart`);
+  };
+
+  const handleDeleteDraft = async (draftId: string) => {
+    await posApi.deleteDraftOrder(draftId);
+    setDrafts(drafts.filter((d) => d.id !== draftId));
+    toast.success('Draft order removed.');
+  };
 
   // Load Paystack Inline SDK script
   const loadPaystackScript = (): Promise<boolean> => {
@@ -156,7 +292,7 @@ export function POSPage() {
           discount: discountAmount,
           tax: taxAmount,
           total: grandTotal,
-          payment_provider: paymentProvider,
+          payment_provider: paymentProvider as any,
           payment_method: paymentMethod,
           payment_status: payStatus,
           transaction_status: txStatus,
@@ -200,7 +336,6 @@ export function POSPage() {
       const ref = `PAY-${Date.now()}`;
       
       if (!pk || pk === 'pk_test_placeholder' || !pk.startsWith('pk_')) {
-        // Open high-fidelity simulator dialog if no valid public key configured
         setPaystackReference(ref);
         setPaystackSimStep(1);
         setPaystackCardNumber('');
@@ -236,9 +371,7 @@ export function POSPage() {
         };
 
         const PaystackObj = (window as any).PaystackPop;
-
         if (PaystackObj) {
-          // If setup method exists (Standard Paystack Inline v1)
           if (typeof PaystackObj.setup === 'function') {
             const handler = PaystackObj.setup({
               key: pk,
@@ -251,43 +384,11 @@ export function POSPage() {
               onClose: handleClose,
               onCancel: handleClose,
             });
-
-            if (handler && typeof handler.openIframe === 'function') {
-              handler.openIframe();
-            } else if (handler && typeof handler.open === 'function') {
-              handler.open();
-            }
-            return;
-          }
-
-          // If instance constructible (Paystack Inline v2)
-          if (typeof PaystackObj === 'function') {
-            const paystack = new PaystackObj();
-            const config = {
-              key: pk,
-              email: customerEmail,
-              amount: amountInKobo,
-              currency: 'NGN',
-              ref: ref,
-              callback: handleSuccess,
-              onSuccess: handleSuccess,
-              onClose: handleClose,
-              onCancel: handleClose,
-            };
-
-            if (typeof paystack.newTransaction === 'function') {
-              paystack.newTransaction(config);
-            } else if (typeof paystack.checkout === 'function') {
-              paystack.checkout(config);
-            } else {
-              toast.error('Unable to open Paystack payment popup');
-              setIsSubmittingCheckout(false);
-            }
+            if (handler && typeof handler.openIframe === 'function') handler.openIframe();
+            else if (handler && typeof handler.open === 'function') handler.open();
             return;
           }
         }
-
-        toast.error('Paystack SDK failed to initialize');
         setIsSubmittingCheckout(false);
       } catch (err: any) {
         toast.error(err.message || 'Paystack initialization failed');
@@ -296,22 +397,10 @@ export function POSPage() {
       return;
     }
 
-    // Bank Transfer Verification flow
-    if (paymentProvider === 'Transfer') {
-      if (!transferInstantVerify) {
-        // Create pending payment & transaction
-        await executeFinalCheckout('Pending', 'Pending');
-      } else {
-        await executeFinalCheckout('Success', 'Completed');
-      }
-      return;
-    }
-
-    // Default Cash/Card Flow
+    // Default Cash/Card/Store Credit Flow
     await executeFinalCheckout('Success', 'Completed');
   };
 
-  // Handle Add Customer submission
   const handleAddCustomerSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!business?.id) return;
@@ -329,14 +418,12 @@ export function POSPage() {
         phone: custPhone || undefined,
       });
 
-      // Reload customers and select the newly created customer
       const custData = await customersApi.getCustomers(business.id);
       setCustomers(custData);
       setCustomerId(newCust.id);
       
       toast.success('Customer registered and linked to cart');
       setIsAddCustomerOpen(false);
-      
       setCustFirstName('');
       setCustLastName('');
       setCustPhone('');
@@ -347,7 +434,6 @@ export function POSPage() {
     }
   };
 
-  // Receipt Printing mockup
   const handlePrintReceipt = () => {
     const printContent = receiptRef.current?.innerHTML;
     const windowUrl = 'about:blank';
@@ -385,7 +471,6 @@ export function POSPage() {
     }
   };
 
-  // Filter Catalog
   const filteredProducts = products.filter((p) => {
     const matchesSearch =
       p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -393,29 +478,64 @@ export function POSPage() {
       (p.barcode && p.barcode.toLowerCase().includes(searchQuery.toLowerCase()));
 
     const matchesCategory = selectedCategory === 'all' || p.category_id === selectedCategory;
-
     return matchesSearch && matchesCategory;
   });
 
-  const getSelectedCustomer = () => {
-    return customers.find((c) => c.id === customerId);
-  };
+  const selectedCustomer = customers.find((c) => c.id === customerId);
 
   return (
     <div className="h-[calc(100vh-8rem)] flex flex-col md:flex-row gap-6 relative">
+      {/* Keyboard Shortcuts & Draft Modals */}
+      <DraftOrdersModal
+        isOpen={isDraftsModalOpen}
+        onClose={() => setIsDraftsModalOpen(false)}
+        drafts={drafts}
+        onLoadDraft={handleLoadDraft}
+        onDeleteDraft={handleDeleteDraft}
+        currency={business?.currency || 'NGN'}
+      />
+
+      <SplitPaymentModal
+        isOpen={isSplitPaymentOpen}
+        onClose={() => setIsSplitPaymentOpen(false)}
+        totalAmount={grandTotal}
+        currency={business?.currency || 'NGN'}
+        customer={selectedCustomer}
+        onCompleteSplitPayment={() => {
+          setIsSplitPaymentOpen(false);
+          executeFinalCheckout('Success', 'Completed', `SPLIT-${Date.now()}`);
+        }}
+      />
+
+      <KeyboardShortcutsModal
+        isOpen={isShortcutsModalOpen}
+        onClose={() => setIsShortcutsModalOpen(false)}
+      />
+
       {/* Left side: Catalog Lookup */}
       <div className="flex-1 flex flex-col min-w-0 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-sm">
         {/* Search and Filters toolbar */}
         <div className="p-4 border-b border-slate-200 dark:border-slate-800 space-y-3">
-          <div className="relative">
-            <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Scan Barcode or Search Product..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full h-10 pl-9 pr-4 rounded-lg border border-slate-300 bg-white dark:border-slate-800 dark:bg-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-slate-100"
-            />
+          <div className="flex items-center gap-3">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
+              <input
+                ref={searchInputRef}
+                type="text"
+                placeholder="Scan Barcode or Search Product... (Hotkey: F1)"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full h-10 pl-9 pr-4 rounded-xl border border-slate-300 bg-white dark:border-slate-800 dark:bg-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-slate-100"
+              />
+            </div>
+            <button
+              onClick={() => setIsShortcutsModalOpen(true)}
+              className="px-3 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors"
+              title="View Keyboard Hotkeys"
+            >
+              <Keyboard className="h-4 w-4" />
+              <span className="hidden sm:inline">Hotkeys</span>
+            </button>
           </div>
 
           <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-thin">
@@ -522,36 +642,68 @@ export function POSPage() {
             <ShoppingBag className="h-5 w-5 text-blue-600" />
             <span className="font-bold text-slate-900 dark:text-white">Active Order</span>
           </div>
-          <button
-            onClick={clearCart}
-            disabled={cartItems.length === 0}
-            className="text-xs font-semibold text-red-600 hover:text-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Clear Cart
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setIsDraftsModalOpen(true)}
+              className="text-xs font-semibold text-blue-600 hover:underline flex items-center gap-1"
+              title="Saved Draft Carts"
+            >
+              <FileText className="h-3.5 w-3.5" />
+              <span>Drafts ({drafts.length})</span>
+            </button>
+            <button
+              onClick={handleSaveDraft}
+              disabled={cartItems.length === 0}
+              className="p-1 rounded text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30"
+              title="Save Current Cart as Draft (F3)"
+            >
+              <Save className="h-4 w-4" />
+            </button>
+            <button
+              onClick={clearCart}
+              disabled={cartItems.length === 0}
+              className="text-xs font-semibold text-red-600 hover:text-red-500 disabled:opacity-50"
+            >
+              Clear
+            </button>
+          </div>
         </div>
 
-        {/* Customer select box */}
-        <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/20 flex gap-2 items-center">
-          <select
-            value={customerId || ''}
-            onChange={(e) => setCustomerId(e.target.value || null)}
-            className="flex-1 h-9 rounded-lg border border-slate-300 bg-white px-2 text-xs focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-          >
-            <option value="">Walk-in Customer</option>
-            {customers.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.first_name} {c.last_name} ({c.phone || 'No Phone'})
-              </option>
-            ))}
-          </select>
-          <button
-            onClick={() => setIsAddCustomerOpen(true)}
-            className="h-9 w-9 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 rounded-lg flex items-center justify-center hover:bg-blue-100"
-            title="Register Customer"
-          >
-            <UserPlus className="h-4 w-4" />
-          </button>
+        {/* Customer select box & Loyalty indicator */}
+        <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/20 space-y-2">
+          <div className="flex gap-2 items-center">
+            <select
+              value={customerId || ''}
+              onChange={(e) => setCustomerId(e.target.value || null)}
+              className="flex-1 h-9 rounded-lg border border-slate-300 bg-white px-2 text-xs focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+            >
+              <option value="">Walk-in Customer</option>
+              {customers.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.first_name} {c.last_name} ({c.phone || 'No Phone'})
+                </option>
+              ))}
+            </select>
+            <button
+              onClick={() => setIsAddCustomerOpen(true)}
+              className="h-9 w-9 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 rounded-lg flex items-center justify-center hover:bg-blue-100"
+              title="Register Customer"
+            >
+              <UserPlus className="h-4 w-4" />
+            </button>
+          </div>
+
+          {selectedCustomer && (
+            <div className="flex items-center justify-between text-[11px] font-medium text-slate-500 bg-white dark:bg-slate-900 p-2 rounded-lg border border-slate-200 dark:border-slate-800">
+              <span className="flex items-center gap-1 text-amber-600 dark:text-amber-400 font-bold">
+                <Award className="h-3.5 w-3.5" />
+                {selectedCustomer.loyalty_points || 0} Loyalty Pts
+              </span>
+              <span className="text-slate-700 dark:text-slate-300 font-semibold">
+                Store Credit: ₦{(selectedCustomer.store_credit || 0).toLocaleString()}
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Cart items scrollbox */}
@@ -574,7 +726,6 @@ export function POSPage() {
                   </p>
                 </div>
                 
-                {/* Quantity Controls */}
                 <div className="flex items-center gap-1.5 border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-900 p-0.5">
                   <button
                     onClick={() => updateQuantity(item.product.id, item.quantity - 1)}
@@ -611,7 +762,7 @@ export function POSPage() {
         {/* Cart summary calculations & payment button */}
         <div className="p-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/30 space-y-3">
           <div className="flex items-center justify-between text-xs text-slate-500">
-            <span>Overall Order Discount (%)</span>
+            <span>Overall Order Discount (%) [F2]</span>
             <input
               type="number"
               min="0"
@@ -643,14 +794,25 @@ export function POSPage() {
             </div>
           </div>
 
-          <Button
-            onClick={() => setIsCheckoutOpen(true)}
-            disabled={cartItems.length === 0}
-            className="w-full mt-3 h-11 flex items-center justify-center gap-2"
-          >
-            <DollarSign className="h-4 w-4" />
-            Proceed to Payment
-          </Button>
+          <div className="grid grid-cols-2 gap-2 pt-2">
+            <button
+              type="button"
+              onClick={() => setIsSplitPaymentOpen(true)}
+              disabled={cartItems.length === 0}
+              className="h-11 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 disabled:opacity-50 text-slate-700 dark:text-slate-300 transition-colors"
+            >
+              <CreditCard className="h-4 w-4" />
+              Split Tender
+            </button>
+            <Button
+              onClick={() => setIsCheckoutOpen(true)}
+              disabled={cartItems.length === 0}
+              className="h-11 flex items-center justify-center gap-1.5"
+            >
+              <DollarSign className="h-4 w-4" />
+              Pay Order
+            </Button>
+          </div>
         </div>
       </aside>
 
@@ -685,11 +847,11 @@ export function POSPage() {
 
           {/* Payment Method Option */}
           <div className="space-y-2">
-            <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Payment Provider</label>
+            <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Payment Method</label>
             <div className="grid grid-cols-2 gap-3">
               {[
                 { id: 'Cash', label: 'Cash' },
-                { id: 'Card', label: 'Card' },
+                { id: 'Card', label: 'Card POS' },
                 { id: 'Transfer', label: 'Bank Transfer' },
                 { id: 'Paystack', label: 'Paystack' },
               ].map((prov) => (
@@ -820,7 +982,6 @@ export function POSPage() {
         className="max-w-md"
       >
         <div className="bg-[#f4f7f9] dark:bg-slate-950 -m-6 p-6 flex flex-col min-h-[420px] text-slate-800 dark:text-slate-100">
-          {/* Paystack Mock Header */}
           <div className="flex justify-between items-center pb-4 border-b border-slate-200 dark:border-slate-800">
             <div>
               <div className="text-xs text-slate-400 font-bold uppercase tracking-wider">Merchant</div>
@@ -832,7 +993,6 @@ export function POSPage() {
             </div>
           </div>
 
-          {/* Simulator Panel Body */}
           <div className="flex-1 py-6 flex flex-col justify-between">
             {paystackSimStep === 1 ? (
               <div className="space-y-4">
@@ -929,7 +1089,6 @@ export function POSPage() {
             )}
           </div>
 
-          {/* Paystack Mock Footer */}
           <div className="pt-4 border-t border-slate-200 dark:border-slate-800 text-center text-xs text-slate-400">
             Secured by <span className="font-bold text-slate-600 dark:text-slate-300">paystack</span>
           </div>
@@ -946,7 +1105,6 @@ export function POSPage() {
         {completedTransaction && (
           <div className="space-y-6">
             <div className="bg-slate-50 dark:bg-slate-900 border dark:border-slate-800 p-4 rounded-xl">
-              {/* Printable Wrapper */}
               <div ref={receiptRef} className="text-slate-950 dark:text-slate-200">
                 <div className="text-center space-y-1">
                   <h3 className="text-sm font-bold uppercase tracking-wider">
@@ -978,8 +1136,8 @@ export function POSPage() {
                   <div className="flex justify-between">
                     <span>Customer:</span>
                     <span>
-                      {getSelectedCustomer()
-                        ? `${getSelectedCustomer()?.first_name} ${getSelectedCustomer()?.last_name}`
+                      {selectedCustomer
+                        ? `${selectedCustomer.first_name} ${selectedCustomer.last_name}`
                         : 'Walk-in'}
                     </span>
                   </div>
@@ -1051,6 +1209,28 @@ export function POSPage() {
           </div>
         )}
       </Dialog>
+
+      {/* Prompt Modal */}
+      <PromptModal
+        isOpen={promptModal.isOpen}
+        onClose={() => setPromptModal((prev) => ({ ...prev, isOpen: false }))}
+        onSubmit={promptModal.onSubmit}
+        title={promptModal.title}
+        message={promptModal.message}
+        defaultValue={promptModal.defaultValue}
+        inputType={promptModal.inputType}
+      />
+
+      {/* Clear Cart Confirm Modal */}
+      <ConfirmModal
+        isOpen={isClearCartConfirmOpen}
+        onClose={() => setIsClearCartConfirmOpen(false)}
+        onConfirm={clearCart}
+        title="Clear Active Cart"
+        message="Are you sure you want to clear all items from the active cart?"
+        confirmText="Clear Cart"
+        variant="danger"
+      />
     </div>
   );
 }

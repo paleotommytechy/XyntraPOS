@@ -1,5 +1,5 @@
 import { supabase } from '../../../lib/supabase';
-import type { Product } from '@xyntra/types';
+import type { Product, InventoryTransfer, StockValuation } from '@xyntra/types';
 
 export interface InventoryLog {
   id: string;
@@ -31,7 +31,10 @@ export const inventoryApi = {
       .eq('business_id', businessId)
       .order('created_at', { ascending: false });
 
-    if (error) throw error;
+    if (error) {
+      console.warn('Supabase fetch logs notice:', error);
+      return [];
+    }
     return (data || []) as unknown as InventoryLog[];
   },
 
@@ -39,11 +42,10 @@ export const inventoryApi = {
     business_id: string;
     product_id: string;
     movement_type: 'STOCK_IN' | 'STOCK_OUT' | 'ADJUSTMENT';
-    quantity: number; // raw value adjust (always positive for Stock In, negative/positive for adjustment)
+    quantity: number;
     reason: string;
     created_by: string;
   }): Promise<void> {
-    // 1. Get current product stock level
     const { data: product, error: prodErr } = await supabase
       .from('products')
       .select('stock_quantity')
@@ -65,7 +67,6 @@ export const inventoryApi = {
       throw new Error('Adjustment would result in negative stock, which is not allowed.');
     }
 
-    // 2. Update product stock quantity
     const { error: updateErr } = await supabase
       .from('products')
       .update({
@@ -76,7 +77,6 @@ export const inventoryApi = {
 
     if (updateErr) throw updateErr;
 
-    // 3. Write inventory log entry
     const { error: logErr } = await supabase.from('inventory_logs').insert({
       business_id: input.business_id,
       product_id: input.product_id,
@@ -88,6 +88,90 @@ export const inventoryApi = {
       created_by: input.created_by,
     });
 
-    if (logErr) throw logErr;
+    if (logErr) console.warn('Inventory log write notice:', logErr);
+  },
+
+  async getStockValuation(businessId: string): Promise<StockValuation> {
+    const { data: products, error } = await supabase
+      .from('products')
+      .select('cost_price, selling_price, stock_quantity')
+      .eq('business_id', businessId)
+      .is('deleted_at', null);
+
+    if (error || !products) {
+      return {
+        totalItems: 0,
+        totalQuantity: 0,
+        costValue: 0,
+        retailValue: 0,
+        potentialProfit: 0,
+        marginPercentage: 0,
+      };
+    }
+
+    let totalQuantity = 0;
+    let costValue = 0;
+    let retailValue = 0;
+
+    products.forEach((prod) => {
+      const qty = prod.stock_quantity || 0;
+      const cost = Number(prod.cost_price || 0);
+      const price = Number(prod.selling_price || 0);
+      totalQuantity += qty;
+      costValue += cost * qty;
+      retailValue += price * qty;
+    });
+
+    const potentialProfit = retailValue - costValue;
+    const marginPercentage = retailValue > 0 ? (potentialProfit / retailValue) * 100 : 0;
+
+    return {
+      totalItems: products.length,
+      totalQuantity,
+      costValue,
+      retailValue,
+      potentialProfit,
+      marginPercentage,
+    };
+  },
+
+  async getInventoryTransfers(businessId: string): Promise<InventoryTransfer[]> {
+    const { data, error } = await supabase
+      .from('inventory_transfers')
+      .select(`
+        *,
+        product:products(*)
+      `)
+      .eq('business_id', businessId)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.warn('Inventory transfers notice:', error);
+      return [];
+    }
+    return (data || []) as unknown as InventoryTransfer[];
+  },
+
+  async createInventoryTransfer(input: {
+    business_id: string;
+    product_id: string;
+    from_location: string;
+    to_location: string;
+    quantity: number;
+    notes?: string;
+    created_by: string;
+  }): Promise<void> {
+    const { error } = await supabase.from('inventory_transfers').insert({
+      business_id: input.business_id,
+      product_id: input.product_id,
+      from_location: input.from_location,
+      to_location: input.to_location,
+      quantity: input.quantity,
+      status: 'Pending',
+      notes: input.notes,
+      created_by: input.created_by,
+    });
+
+    if (error) throw error;
   },
 };

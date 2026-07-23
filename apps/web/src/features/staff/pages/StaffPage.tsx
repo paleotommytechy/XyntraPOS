@@ -5,7 +5,7 @@ import { MobileDesktopRedirect } from '../../../components/mobile/MobileDesktopR
 import { XyntraSpinner } from '../../../components/XyntraSpinner';
 import { staffApi, type InviteStaffPayload } from '../services/staff.api';
 import { usePermissions } from '../hooks/usePermissions';
-import type { UserProfile } from '@xyntra/types';
+import type { UserProfile, EmployeeShift, AuditLogItem, StaffInvitation } from '@xyntra/types';
 import { Card, Table, TableHeader, TableBody, TableRow, TableHead, TableCell, Button, Input } from '@xyntra/ui';
 import { 
   Users, 
@@ -19,9 +19,16 @@ import {
   CheckCircle, 
   XCircle,
   ShieldAlert,
-  Search
+  Search,
+  Clock,
+  Shield,
+  Copy,
+  Key,
+  UserCheck,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { ShiftClockWidget } from '../components/ShiftClockWidget';
+import { AuditLogsTab } from '../components/AuditLogsTab';
 
 export function StaffPage() {
   const { isMobileMode } = useIsMobile();
@@ -33,9 +40,15 @@ export function StaffPage() {
   const { canManageStaff } = usePermissions();
 
   const [staffList, setStaffList] = useState<UserProfile[]>([]);
+  const [invitationsList, setInvitationsList] = useState<StaffInvitation[]>([]);
+  const [shifts, setShifts] = useState<EmployeeShift[]>([]);
+  const [auditLogs, setAuditLogs] = useState<AuditLogItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   
+  // Tabs
+  const [activeTab, setActiveTab] = useState<'team' | 'shifts' | 'audit'>('team');
+
   // Invite modal & generated code state
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -55,22 +68,29 @@ export function StaffPage() {
 
   useEffect(() => {
     if (business?.id) {
-      loadStaff();
+      loadStaffData();
     }
   }, [business?.id]);
 
-  const loadStaff = async () => {
+  const loadStaffData = async () => {
     if (!business?.id) return;
     setIsLoading(true);
     try {
-      const data = await staffApi.getStaffMembers(business.id);
-      
-      // Fallback: If current user profile isn't in returned list (due to fresh setup), include it
-      if (currentProfile && !data.some(p => p.id === currentProfile.id)) {
-        data.unshift(currentProfile);
+      const [members, invs, shiftData, auditData] = await Promise.all([
+        staffApi.getStaffMembers(business.id),
+        staffApi.getStaffInvitations(business.id),
+        staffApi.getEmployeeShifts(business.id),
+        staffApi.getAuditLogs(business.id),
+      ]);
+
+      if (currentProfile && !members.some((p) => p.id === currentProfile.id)) {
+        members.unshift(currentProfile);
       }
-      
-      setStaffList(data);
+
+      setStaffList(members);
+      setInvitationsList(invs);
+      setShifts(shiftData);
+      setAuditLogs(auditData);
     } catch (err) {
       toast.error('Failed to load staff team members');
       if (currentProfile) {
@@ -78,6 +98,27 @@ export function StaffPage() {
       }
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleClockIn = async () => {
+    if (!business?.id || !currentProfile?.id) return;
+    try {
+      await staffApi.clockInShift(business.id, currentProfile.id);
+      toast.success('Clocked in shift successfully!');
+      loadStaffData();
+    } catch (err) {
+      toast.error('Failed to clock in shift.');
+    }
+  };
+
+  const handleClockOut = async (shiftId: string) => {
+    try {
+      await staffApi.clockOutShift(shiftId);
+      toast.success('Clocked out shift successfully!');
+      loadStaffData();
+    } catch (err) {
+      toast.error('Failed to clock out shift.');
     }
   };
 
@@ -94,9 +135,8 @@ export function StaffPage() {
       const result = await staffApi.inviteStaffMember(business.id, inviteForm);
       toast.success(`One-Time Code generated for ${inviteForm.name}!`);
       
-      setStaffList((prev) => [result.profile, ...prev]);
+      setInvitationsList((prev) => [result.invitation, ...prev]);
       
-      // Store generated code info to show success modal step
       setGeneratedCodeInfo({
         code: result.inviteCode,
         name: inviteForm.name,
@@ -109,6 +149,26 @@ export function StaffPage() {
       toast.error('Failed to generate staff invitation code');
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleApproveInvitation = async (inv: StaffInvitation) => {
+    try {
+      await staffApi.approveStaffInvitation(inv.id, inv.email, inv.role);
+      toast.success(`Approved ${inv.name}! They now have active ${inv.role} access.`);
+      loadStaffData();
+    } catch (err) {
+      toast.error('Failed to approve staff member');
+    }
+  };
+
+  const handleRejectInvitation = async (inv: StaffInvitation) => {
+    try {
+      await staffApi.rejectStaffInvitation(inv.id, inv.email);
+      toast.success(`Invitation for ${inv.name} cancelled.`);
+      loadStaffData();
+    } catch (err) {
+      toast.error('Failed to cancel invitation');
     }
   };
 
@@ -193,13 +253,13 @@ export function StaffPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">Staff Management</h1>
+          <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">Staff Team & Shift Logs</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-            Invite team members, assign permissions, and manage store staff access.
+            Manage team access roles, clock-in shift attendance, and review system audit logs.
           </p>
         </div>
         <div className="flex gap-3">
-          <Button onClick={loadStaff} variant="secondary" className="h-10">
+          <Button onClick={loadStaffData} variant="secondary" className="h-10">
             <RefreshCw className="h-4 w-4 mr-2" />
             Refresh
           </Button>
@@ -210,169 +270,326 @@ export function StaffPage() {
         </div>
       </div>
 
-      {/* Staff Role Metrics */}
-      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-        <Card className="p-4 bg-white dark:bg-slate-900 border dark:border-slate-800 shadow-sm flex items-center justify-between">
-          <div>
-            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Total Team</span>
-            <h3 className="text-2xl font-extrabold text-slate-900 dark:text-white mt-0.5">{staffList.length}</h3>
+      {/* Tabs */}
+      <div className="flex border-b border-slate-200 dark:border-slate-800 gap-4">
+        <button
+          onClick={() => setActiveTab('team')}
+          className={`pb-3 font-semibold text-sm transition-all border-b-2 px-1 ${
+            activeTab === 'team'
+              ? 'border-blue-600 text-blue-600 dark:text-blue-400'
+              : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <Users className="h-4 w-4" />
+            Team Members ({staffList.length})
           </div>
-          <div className="p-2.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-lg">
-            <Users className="h-5 w-5" />
+        </button>
+        <button
+          onClick={() => setActiveTab('shifts')}
+          className={`pb-3 font-semibold text-sm transition-all border-b-2 px-1 ${
+            activeTab === 'shifts'
+              ? 'border-blue-600 text-blue-600 dark:text-blue-400'
+              : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <Clock className="h-4 w-4" />
+            Shift Attendance Logs
           </div>
-        </Card>
-
-        <Card className="p-4 bg-white dark:bg-slate-900 border dark:border-slate-800 shadow-sm flex items-center justify-between">
-          <div>
-            <span className="text-[10px] text-purple-600 dark:text-purple-400 font-bold uppercase tracking-wider block">Admins</span>
-            <h3 className="text-2xl font-extrabold text-purple-700 dark:text-purple-300 mt-0.5">{adminCount}</h3>
+        </button>
+        <button
+          onClick={() => setActiveTab('audit')}
+          className={`pb-3 font-semibold text-sm transition-all border-b-2 px-1 ${
+            activeTab === 'audit'
+              ? 'border-blue-600 text-blue-600 dark:text-blue-400'
+              : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <Shield className="h-4 w-4" />
+            System Audit Logs
           </div>
-          <div className="p-2.5 bg-purple-50 dark:bg-purple-900/20 text-purple-600 rounded-lg">
-            <ShieldCheck className="h-5 w-5" />
-          </div>
-        </Card>
-
-        <Card className="p-4 bg-white dark:bg-slate-900 border dark:border-slate-800 shadow-sm flex items-center justify-between">
-          <div>
-            <span className="text-[10px] text-blue-600 dark:text-blue-400 font-bold uppercase tracking-wider block">Managers</span>
-            <h3 className="text-2xl font-extrabold text-blue-700 dark:text-blue-300 mt-0.5">{managerCount}</h3>
-          </div>
-          <div className="p-2.5 bg-blue-50 dark:bg-blue-900/20 text-blue-600 rounded-lg">
-            <Briefcase className="h-5 w-5" />
-          </div>
-        </Card>
-
-        <Card className="p-4 bg-white dark:bg-slate-900 border dark:border-slate-800 shadow-sm flex items-center justify-between">
-          <div>
-            <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold uppercase tracking-wider block">Cashiers</span>
-            <h3 className="text-2xl font-extrabold text-emerald-700 dark:text-emerald-300 mt-0.5">{cashierCount}</h3>
-          </div>
-          <div className="p-2.5 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 rounded-lg">
-            <User className="h-5 w-5" />
-          </div>
-        </Card>
+        </button>
       </div>
 
-      {/* Staff Table Card */}
-      <Card className="p-6 bg-white dark:bg-slate-900 border dark:border-slate-800 shadow-sm space-y-4">
-        {/* Search Toolbar */}
-        <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
-          <div className="relative w-full sm:w-80">
-            <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Search staff by name, email..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
+      {/* Tab: Team Members */}
+      {activeTab === 'team' && (
+        <div className="space-y-6 animate-in fade-in duration-200">
+          {/* Staff Role Metrics */}
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+            <Card className="p-4 bg-white dark:bg-slate-900 border dark:border-slate-800 shadow-sm flex items-center justify-between">
+              <div>
+                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Total Team</span>
+                <h3 className="text-2xl font-extrabold text-slate-900 dark:text-white mt-0.5">{staffList.length}</h3>
+              </div>
+              <div className="p-2.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-lg">
+                <Users className="h-5 w-5" />
+              </div>
+            </Card>
+
+            <Card className="p-4 bg-white dark:bg-slate-900 border dark:border-slate-800 shadow-sm flex items-center justify-between">
+              <div>
+                <span className="text-[10px] text-purple-600 dark:text-purple-400 font-bold uppercase tracking-wider block">Admins</span>
+                <h3 className="text-2xl font-extrabold text-purple-700 dark:text-purple-300 mt-0.5">{adminCount}</h3>
+              </div>
+              <div className="p-2.5 bg-purple-50 dark:bg-purple-900/20 text-purple-600 rounded-lg">
+                <ShieldCheck className="h-5 w-5" />
+              </div>
+            </Card>
+
+            <Card className="p-4 bg-white dark:bg-slate-900 border dark:border-slate-800 shadow-sm flex items-center justify-between">
+              <div>
+                <span className="text-[10px] text-blue-600 dark:text-blue-400 font-bold uppercase tracking-wider block">Managers</span>
+                <h3 className="text-2xl font-extrabold text-blue-700 dark:text-blue-300 mt-0.5">{managerCount}</h3>
+              </div>
+              <div className="p-2.5 bg-blue-50 dark:bg-blue-900/20 text-blue-600 rounded-lg">
+                <Briefcase className="h-5 w-5" />
+              </div>
+            </Card>
+
+            <Card className="p-4 bg-white dark:bg-slate-900 border dark:border-slate-800 shadow-sm flex items-center justify-between">
+              <div>
+                <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold uppercase tracking-wider block">Cashiers</span>
+                <h3 className="text-2xl font-extrabold text-emerald-700 dark:text-emerald-300 mt-0.5">{cashierCount}</h3>
+              </div>
+              <div className="p-2.5 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 rounded-lg">
+                <User className="h-5 w-5" />
+              </div>
+            </Card>
           </div>
-          <span className="text-xs text-slate-400 font-medium">
-            Showing {filteredStaff.length} of {staffList.length} staff members
-          </span>
+
+          {/* Pending Invitations & Join Requests Table Card */}
+          {invitationsList.length > 0 && (
+            <Card className="p-6 bg-gradient-to-r from-slate-900 to-slate-800 text-white border border-slate-700 shadow-xl space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-xl bg-amber-500/20 text-amber-400">
+                    <Clock className="h-5 w-5 animate-pulse" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-base text-white">Pending Invitations & Access Approvals</h3>
+                    <p className="text-xs text-slate-300">Staff members with invite codes or awaiting owner approval</p>
+                  </div>
+                </div>
+                <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                  {invitationsList.length} Pending
+                </span>
+              </div>
+
+              <Table>
+                <TableHeader>
+                  <TableRow className="border-slate-700 hover:bg-transparent">
+                    <TableHead className="text-slate-300">Invited Person</TableHead>
+                    <TableHead className="text-slate-300">Invite Code</TableHead>
+                    <TableHead className="text-slate-300">Assigned Role</TableHead>
+                    <TableHead className="text-slate-300">Status</TableHead>
+                    <TableHead className="text-right text-slate-300">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {invitationsList.map((inv) => (
+                    <TableRow key={inv.id} className="border-slate-800 hover:bg-slate-800/50">
+                      <TableCell>
+                        <div>
+                          <div className="font-semibold text-sm text-white">{inv.name}</div>
+                          <div className="text-xs text-slate-400">{inv.email}</div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-xs font-bold tracking-wider bg-slate-800 px-2 py-1 rounded border border-slate-700 text-blue-300">
+                            {inv.token || 'N/A'}
+                          </span>
+                          {inv.token && (
+                            <button
+                              onClick={() => {
+                                navigator.clipboard.writeText(inv.token || '');
+                                toast.success('Invite code copied to clipboard!');
+                              }}
+                              className="p-1 text-slate-400 hover:text-white transition-colors"
+                              title="Copy Invite Code"
+                            >
+                              <Copy className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>{getRoleBadge(inv.role)}</TableCell>
+                      <TableCell>
+                        {inv.status === 'Awaiting Approval' ? (
+                          <span className="inline-flex items-center gap-1.5 text-xs text-amber-300 bg-amber-500/20 px-2.5 py-1 rounded-full font-semibold border border-amber-500/30">
+                            <Clock className="h-3 w-3 animate-spin" />
+                            Awaiting Approval
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 text-xs text-blue-300 bg-blue-500/20 px-2.5 py-1 rounded-full font-semibold border border-blue-500/30">
+                            <Key className="h-3 w-3" />
+                            Pending Invite Code
+                          </span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <Button
+                            onClick={() => handleApproveInvitation(inv)}
+                            className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-medium px-3"
+                          >
+                            <UserCheck className="h-3.5 w-3.5 mr-1.5" /> Approve
+                          </Button>
+                          <Button
+                            onClick={() => handleRejectInvitation(inv)}
+                            variant="secondary"
+                            className="h-8 text-xs text-slate-300 hover:text-white bg-slate-800 border-slate-700 px-2.5"
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </Card>
+          )}
+
+          {/* Staff Table Card */}
+          <Card className="p-6 bg-white dark:bg-slate-900 border dark:border-slate-800 shadow-sm space-y-4">
+            <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
+              <div className="relative w-full sm:w-80">
+                <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Search staff by name, email..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full pl-9 pr-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-900 dark:text-slate-100"
+                />
+              </div>
+              <span className="text-xs text-slate-400 font-medium">
+                Showing {filteredStaff.length} of {staffList.length} staff members
+              </span>
+            </div>
+
+            {isLoading ? (
+              <div className="py-8">
+                <XyntraSpinner size="sm" />
+              </div>
+            ) : filteredStaff.length === 0 ? (
+              <div className="py-12 text-center text-slate-400 text-sm">
+                No staff members found matching your search.
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Staff Member</TableHead>
+                    <TableHead>Contact</TableHead>
+                    <TableHead>Role</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Joined</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredStaff.map((staff) => (
+                    <TableRow key={staff.id}>
+                      <TableCell>
+                        <div className="flex items-center gap-3">
+                          <div className="h-9 w-9 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-600 font-bold flex items-center justify-center text-sm uppercase shrink-0">
+                            {staff.name ? staff.name.charAt(0) : 'U'}
+                          </div>
+                          <div>
+                            <div className="font-semibold text-slate-900 dark:text-white text-sm">
+                              {staff.name} {currentProfile?.id === staff.id && <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-normal ml-1">You</span>}
+                            </div>
+                            <div className="text-xs text-slate-400">{staff.email || 'No email registered'}</div>
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="text-xs space-y-0.5">
+                          {staff.email && (
+                            <div className="flex items-center gap-1.5 text-slate-600 dark:text-slate-400">
+                              <Mail className="h-3 w-3 shrink-0" />
+                              <span className="truncate max-w-[160px]">{staff.email}</span>
+                            </div>
+                          )}
+                          {staff.phone && (
+                            <div className="flex items-center gap-1.5 text-slate-500">
+                              <Phone className="h-3 w-3 shrink-0" />
+                              <span>{staff.phone}</span>
+                            </div>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>{getRoleBadge(staff.role)}</TableCell>
+                      <TableCell>
+                        {staff.status === 'Inactive' ? (
+                          <span className="inline-flex items-center gap-1 text-xs text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded">
+                            <XCircle className="h-3 w-3 text-slate-400" />
+                            Inactive
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-xs text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20 px-2 py-0.5 rounded">
+                            <CheckCircle className="h-3 w-3 text-emerald-600" />
+                            Active
+                          </span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-xs text-slate-500">
+                        {new Date(staff.created_at).toLocaleDateString()}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {currentProfile?.id !== staff.id && (
+                          <div className="flex items-center justify-end gap-2">
+                            <select
+                              value={staff.role}
+                              onChange={(e) => handleRoleChange(staff.id, e.target.value as any)}
+                              className="text-xs border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 rounded px-2 py-1 focus:outline-none"
+                            >
+                              <option value="Admin">Admin</option>
+                              <option value="Manager">Manager</option>
+                              <option value="Cashier">Cashier</option>
+                            </select>
+
+                            <Button
+                              onClick={() => handleToggleStatus(staff.id, staff.status)}
+                              variant="secondary"
+                              className="h-7 text-[11px] px-2"
+                            >
+                              {staff.status === 'Inactive' ? 'Activate' : 'Deactivate'}
+                            </Button>
+                          </div>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </Card>
         </div>
+      )}
 
-        {/* Table */}
-        {isLoading ? (
-          <div className="py-8">
-            <XyntraSpinner size="sm" />
-          </div>
-        ) : filteredStaff.length === 0 ? (
-          <div className="py-12 text-center text-slate-400 text-sm">
-            No staff members found matching your search.
-          </div>
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Staff Member</TableHead>
-                <TableHead>Contact</TableHead>
-                <TableHead>Role</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Joined</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredStaff.map((staff) => (
-                <TableRow key={staff.id}>
-                  <TableCell>
-                    <div className="flex items-center gap-3">
-                      <div className="h-9 w-9 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-600 font-bold flex items-center justify-center text-sm uppercase">
-                        {staff.name ? staff.name.charAt(0) : 'U'}
-                      </div>
-                      <div>
-                        <div className="font-semibold text-slate-900 dark:text-white text-sm">
-                          {staff.name} {currentProfile?.id === staff.id && <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-normal ml-1">You</span>}
-                        </div>
-                        <div className="text-xs text-slate-400">{staff.email || 'No email registered'}</div>
-                      </div>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="text-xs space-y-0.5">
-                      {staff.email && (
-                        <div className="flex items-center gap-1.5 text-slate-600 dark:text-slate-400">
-                          <Mail className="h-3 w-3 shrink-0" />
-                          <span className="truncate max-w-[160px]">{staff.email}</span>
-                        </div>
-                      )}
-                      {staff.phone && (
-                        <div className="flex items-center gap-1.5 text-slate-500">
-                          <Phone className="h-3 w-3 shrink-0" />
-                          <span>{staff.phone}</span>
-                        </div>
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell>{getRoleBadge(staff.role)}</TableCell>
-                  <TableCell>
-                    {staff.status === 'Inactive' ? (
-                      <span className="inline-flex items-center gap-1 text-xs text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded">
-                        <XCircle className="h-3 w-3 text-slate-400" />
-                        Inactive
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 text-xs text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20 px-2 py-0.5 rounded">
-                        <CheckCircle className="h-3 w-3 text-emerald-600" />
-                        Active
-                      </span>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-xs text-slate-500">
-                    {new Date(staff.created_at).toLocaleDateString()}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {currentProfile?.id !== staff.id && (
-                      <div className="flex items-center justify-end gap-2">
-                        {/* Change Role Selection */}
-                        <select
-                          value={staff.role}
-                          onChange={(e) => handleRoleChange(staff.id, e.target.value as any)}
-                          className="text-xs border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 rounded px-2 py-1 focus:outline-none"
-                        >
-                          <option value="Admin">Admin</option>
-                          <option value="Manager">Manager</option>
-                          <option value="Cashier">Cashier</option>
-                        </select>
+      {/* Tab: Shift Attendance */}
+      {activeTab === 'shifts' && (
+        <div className="animate-in fade-in duration-200">
+          <ShiftClockWidget
+            shifts={shifts}
+            isLoading={isLoading}
+            onClockIn={handleClockIn}
+            onClockOut={handleClockOut}
+          />
+        </div>
+      )}
 
-                        {/* Status toggle button */}
-                        <Button
-                          onClick={() => handleToggleStatus(staff.id, staff.status)}
-                          variant="secondary"
-                          className="h-7 text-[11px] px-2"
-                        >
-                          {staff.status === 'Inactive' ? 'Activate' : 'Deactivate'}
-                        </Button>
-                      </div>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
-      </Card>
+      {/* Tab: Audit Logs */}
+      {activeTab === 'audit' && (
+        <div className="animate-in fade-in duration-200">
+          <AuditLogsTab logs={auditLogs} isLoading={isLoading} />
+        </div>
+      )}
 
       {/* Invite Staff Modal */}
       {isInviteModalOpen && (
@@ -395,7 +612,6 @@ export function StaffPage() {
             </div>
 
             {generatedCodeInfo ? (
-              /* SUCCESS CODE DISPLAY VIEW */
               <div className="space-y-4 py-2">
                 <div className="p-3.5 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900/50 rounded-xl text-xs text-emerald-800 dark:text-emerald-300 space-y-1">
                   <p className="font-bold flex items-center gap-1.5 text-emerald-900 dark:text-emerald-200 text-sm">
@@ -449,7 +665,6 @@ export function StaffPage() {
                 </div>
               </div>
             ) : (
-              /* INPUT FORM VIEW */
               <form onSubmit={handleInviteSubmit} className="space-y-4">
                 <Input
                   label="Staff Member Full Name *"

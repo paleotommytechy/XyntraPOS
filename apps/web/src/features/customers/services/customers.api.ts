@@ -9,6 +9,16 @@ export interface CreateCustomerInput {
   email?: string;
   address?: string;
   notes?: string;
+  loyalty_points?: number;
+  store_credit?: number;
+  tags?: string[];
+}
+
+export interface CustomerAnalytics {
+  totalSpent: number;
+  orderCount: number;
+  averageOrderValue: number;
+  lastPurchaseDate?: string;
 }
 
 export const customersApi = {
@@ -34,6 +44,9 @@ export const customersApi = {
         email: input.email || null,
         address: input.address || null,
         notes: input.notes || null,
+        loyalty_points: input.loyalty_points || 0,
+        store_credit: input.store_credit || 0,
+        tags: input.tags || [],
       })
       .select()
       .single();
@@ -62,5 +75,34 @@ export const customersApi = {
   async deleteCustomer(id: string): Promise<void> {
     const { error } = await supabase.from('customers').delete().eq('id', id);
     if (error) throw error;
+  },
+
+  async getCustomerAnalytics(customerId: string): Promise<CustomerAnalytics> {
+    const { data: txs, error } = await supabase
+      .from('transactions')
+      .select('total, created_at')
+      .eq('customer_id', customerId)
+      .eq('payment_status', 'Success');
+
+    if (error || !txs || txs.length === 0) {
+      return {
+        totalSpent: 0,
+        orderCount: 0,
+        averageOrderValue: 0,
+      };
+    }
+
+    const totalSpent = txs.reduce((acc, t) => acc + Number(t.total || 0), 0);
+    const orderCount = txs.length;
+    const averageOrderValue = orderCount > 0 ? totalSpent / orderCount : 0;
+    const sorted = [...txs].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    const lastPurchaseDate = sorted[0]?.created_at;
+
+    return {
+      totalSpent,
+      orderCount,
+      averageOrderValue,
+      lastPurchaseDate,
+    };
   },
 };

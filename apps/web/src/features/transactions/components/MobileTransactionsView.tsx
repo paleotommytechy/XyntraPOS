@@ -3,7 +3,7 @@ import { useAuthStore } from '../../../stores/auth.store';
 import { transactionsApi } from '../services/transactions.api';
 import type { FullTransaction, FullTransactionItem } from '../services/transactions.api';
 import { paymentsApi } from '../../payments/services/payments.api';
-import { Button, Dialog } from '@xyntra/ui';
+import { Button, Dialog, ConfirmModal } from '@xyntra/ui';
 import {
   Search,
   RefreshCw,
@@ -28,6 +28,7 @@ export function MobileTransactionsView() {
 
   // Transaction details modal
   const [selectedTx, setSelectedTx] = useState<FullTransaction | null>(null);
+  const [isRefundConfirmOpen, setIsRefundConfirmOpen] = useState(false);
   const [txItems, setTxItems] = useState<FullTransactionItem[]>([]);
   const [isDetailsLoading, setIsDetailsLoading] = useState(false);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
@@ -110,9 +111,13 @@ export function MobileTransactionsView() {
     }
   };
 
-  const handleRefundTransaction = async () => {
+  const handleRefundTransaction = () => {
     if (!selectedTx) return;
-    if (!confirm('Are you sure you want to refund this transaction? Inventory stock will be restored.')) return;
+    setIsRefundConfirmOpen(true);
+  };
+
+  const confirmRefundTransaction = async () => {
+    if (!selectedTx) return;
 
     setIsRefunding(true);
     try {
@@ -455,6 +460,17 @@ export function MobileTransactionsView() {
           </div>
         )}
       </Dialog>
+
+      {/* Refund Confirm Modal */}
+      <ConfirmModal
+        isOpen={isRefundConfirmOpen}
+        onClose={() => setIsRefundConfirmOpen(false)}
+        onConfirm={confirmRefundTransaction}
+        title="Refund Transaction"
+        message="Are you sure you want to refund this transaction? Inventory stock will be restored."
+        confirmText="Refund Transaction"
+        variant="danger"
+      />
     </div>
   );
 }

@@ -18,6 +18,7 @@ import {
   TableHead,
   TableCell,
   Dialog,
+  ConfirmModal,
 } from '@xyntra/ui';
 import {
   Plus,
@@ -55,6 +56,17 @@ export function ProductsPage() {
   const [isCategoryOpen, setIsCategoryOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message?: string;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+  });
 
   // Form states - Product
   const [prodName, setProdName] = useState('');
@@ -217,28 +229,40 @@ export function ProductsPage() {
   };
 
   // Delete Product
-  const handleDeleteProduct = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this product?')) return;
-    try {
-      await productsApi.deleteProduct(id);
-      toast.success('Product deleted successfully');
-      loadData();
-    } catch (err: any) {
-      toast.warning(err.message || 'Failed to delete product');
-      loadData(); // Reload to refresh active states
-    }
+  const handleDeleteProduct = (id: string) => {
+    setConfirmModal({
+      isOpen: true,
+      title: 'Delete Product',
+      message: 'Are you sure you want to delete this product?',
+      onConfirm: async () => {
+        try {
+          await productsApi.deleteProduct(id);
+          toast.success('Product deleted successfully');
+          loadData();
+        } catch (err: any) {
+          toast.warning(err.message || 'Failed to delete product');
+          loadData(); // Reload to refresh active states
+        }
+      },
+    });
   };
 
   // Delete Category
-  const handleDeleteCategory = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this category?')) return;
-    try {
-      await categoriesApi.deleteCategory(id);
-      toast.success('Category deleted successfully');
-      loadData();
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to delete category');
-    }
+  const handleDeleteCategory = (id: string) => {
+    setConfirmModal({
+      isOpen: true,
+      title: 'Delete Category',
+      message: 'Are you sure you want to delete this category?',
+      onConfirm: async () => {
+        try {
+          await categoriesApi.deleteCategory(id);
+          toast.success('Category deleted successfully');
+          loadData();
+        } catch (err: any) {
+          toast.error(err.message || 'Failed to delete category');
+        }
+      },
+    });
   };
 
   // Filter logic
@@ -692,6 +716,17 @@ export function ProductsPage() {
           </div>
         </form>
       </Dialog>
+
+      {/* Confirm Modal */}
+      <ConfirmModal
+        isOpen={confirmModal.isOpen}
+        onClose={() => setConfirmModal((prev) => ({ ...prev, isOpen: false }))}
+        onConfirm={confirmModal.onConfirm}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        confirmText="Delete"
+        variant="danger"
+      />
     </div>
   );
 }

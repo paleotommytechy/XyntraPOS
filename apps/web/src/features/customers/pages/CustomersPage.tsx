@@ -18,6 +18,7 @@ import {
   TableHead,
   TableCell,
   Dialog,
+  ConfirmModal,
 } from '@xyntra/ui';
 import {
   Plus,
@@ -28,8 +29,12 @@ import {
   Loader2,
   History,
   FileText,
+  Award,
+  Wallet,
+  BarChart2,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { CustomerAnalyticsModal } from '../components/CustomerAnalyticsModal';
 
 export function CustomersPage() {
   const { isMobileMode } = useIsMobile();
@@ -44,7 +49,6 @@ export function CustomersPage() {
     );
   }
   
-  // Data states
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -55,6 +59,9 @@ export function CustomersPage() {
   const [isCustomerOpen, setIsCustomerOpen] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [isAnalyticsOpen, setIsAnalyticsOpen] = useState(false);
+  const [selectedCustomerForAnalytics, setSelectedCustomerForAnalytics] = useState<Customer | null>(null);
   const [selectedCustomerForHistory, setSelectedCustomerForHistory] = useState<Customer | null>(null);
   const [customerSalesHistory, setCustomerSalesHistory] = useState<any[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
@@ -66,6 +73,9 @@ export function CustomersPage() {
   const [email, setEmail] = useState('');
   const [address, setAddress] = useState('');
   const [notes, setNotes] = useState('');
+  const [loyaltyPoints, setLoyaltyPoints] = useState(0);
+  const [storeCredit, setStoreCredit] = useState(0);
+  const [tagsInput, setTagsInput] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
@@ -96,6 +106,9 @@ export function CustomersPage() {
       setEmail(customer.email || '');
       setAddress(customer.address || '');
       setNotes(customer.notes || '');
+      setLoyaltyPoints(customer.loyalty_points || 0);
+      setStoreCredit(customer.store_credit || 0);
+      setTagsInput((customer.tags || []).join(', '));
     } else {
       setFirstName('');
       setLastName('');
@@ -103,6 +116,9 @@ export function CustomersPage() {
       setEmail('');
       setAddress('');
       setNotes('');
+      setLoyaltyPoints(0);
+      setStoreCredit(0);
+      setTagsInput('');
     }
     setIsCustomerOpen(true);
   };
@@ -117,6 +133,11 @@ export function CustomersPage() {
 
     setIsSubmitting(true);
     try {
+      const tagsArray = tagsInput
+        .split(',')
+        .map((t) => t.trim())
+        .filter(Boolean);
+
       const payload: CreateCustomerInput = {
         business_id: business.id,
         first_name: firstName,
@@ -125,6 +146,9 @@ export function CustomersPage() {
         email: email || undefined,
         address: address || undefined,
         notes: notes || undefined,
+        loyalty_points: loyaltyPoints,
+        store_credit: storeCredit,
+        tags: tagsArray,
       };
 
       if (editingCustomer) {
@@ -143,10 +167,14 @@ export function CustomersPage() {
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this customer?')) return;
+  const handleDelete = (id: string) => {
+    setDeleteConfirmId(id);
+  };
+
+  const confirmDeleteCustomer = async () => {
+    if (!deleteConfirmId) return;
     try {
-      await customersApi.deleteCustomer(id);
+      await customersApi.deleteCustomer(deleteConfirmId);
       toast.success('Customer deleted successfully');
       loadCustomers();
     } catch (err: any) {
@@ -154,7 +182,6 @@ export function CustomersPage() {
     }
   };
 
-  // Open history view
   const handleOpenHistory = async (customer: Customer) => {
     setSelectedCustomerForHistory(customer);
     setCustomerSalesHistory([]);
@@ -171,7 +198,6 @@ export function CustomersPage() {
       setCustomerSalesHistory(data || []);
     } catch (err) {
       toast.error('Failed to retrieve customer transactions');
-      console.error(err);
     } finally {
       setIsLoadingHistory(false);
     }
@@ -183,7 +209,8 @@ export function CustomersPage() {
     return (
       fullName.includes(search) ||
       (c.phone && c.phone.includes(search)) ||
-      (c.email && c.email.toLowerCase().includes(search))
+      (c.email && c.email.toLowerCase().includes(search)) ||
+      (c.tags && c.tags.some((t) => t.toLowerCase().includes(search)))
     );
   });
 
@@ -192,9 +219,9 @@ export function CustomersPage() {
       {/* Page Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">Customer Database</h1>
+          <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">Customer Database & Loyalty</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-            Maintain merchant contacts, tag customer notes, and review sales order histories.
+            Manage customer accounts, loyalty reward points, store credit, and tags.
           </p>
         </div>
         <div>
@@ -216,10 +243,10 @@ export function CustomersPage() {
             <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
             <input
               type="text"
-              placeholder="Search Name, Phone, Email..."
+              placeholder="Search Name, Phone, Tag, Email..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full h-10 pl-9 pr-4 rounded-lg border border-slate-300 bg-white dark:border-slate-800 dark:bg-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-slate-100"
+              className="w-full h-10 pl-9 pr-4 rounded-xl border border-slate-300 bg-white dark:border-slate-800 dark:bg-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-slate-100"
             />
           </div>
 
@@ -236,9 +263,9 @@ export function CustomersPage() {
                 <TableRow>
                   <TableHead>Customer</TableHead>
                   <TableHead>Phone Number</TableHead>
-                  <TableHead>Email Address</TableHead>
-                  <TableHead>Store Address</TableHead>
-                  <TableHead>Client Notes</TableHead>
+                  <TableHead>Loyalty Pts</TableHead>
+                  <TableHead>Store Credit</TableHead>
+                  <TableHead>Tags</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -246,41 +273,70 @@ export function CustomersPage() {
                 {filteredCustomers.map((c) => (
                   <TableRow key={c.id}>
                     <TableCell className="font-semibold flex items-center gap-2">
-                      <div className="h-8 w-8 rounded-full bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 flex items-center justify-center text-xs font-bold">
+                      <div className="h-8 w-8 rounded-full bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 flex items-center justify-center text-xs font-bold shrink-0">
                         {c.first_name[0]}{c.last_name[0]}
                       </div>
-                      <span>
-                        {c.first_name} {c.last_name}
-                      </span>
+                      <div>
+                        <div className="text-slate-900 dark:text-white">{c.first_name} {c.last_name}</div>
+                        <div className="text-[10px] text-slate-400">{c.email || 'No Email'}</div>
+                      </div>
                     </TableCell>
                     <TableCell>{c.phone || <span className="text-slate-400">-</span>}</TableCell>
-                    <TableCell>{c.email || <span className="text-slate-400">-</span>}</TableCell>
-                    <TableCell className="max-w-xs truncate">
-                      {c.address || <span className="text-slate-400">-</span>}
+                    <TableCell>
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-50 text-amber-700 dark:bg-amber-950/20 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
+                        <Award className="h-3 w-3" />
+                        {c.loyalty_points || 0} Pts
+                      </span>
                     </TableCell>
-                    <TableCell className="max-w-xs truncate">
-                      {c.notes || <span className="text-slate-400">-</span>}
+                    <TableCell>
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-purple-50 text-purple-700 dark:bg-purple-950/20 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+                        <Wallet className="h-3 w-3" />
+                        ₦{(c.store_credit || 0).toLocaleString()}
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex gap-1 flex-wrap">
+                        {c.tags && c.tags.length > 0 ? (
+                          c.tags.map((t, idx) => (
+                            <span key={idx} className="px-2 py-0.5 text-[10px] font-semibold rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                              {t}
+                            </span>
+                          ))
+                        ) : (
+                          <span className="text-slate-400 text-xs">-</span>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
+                      <div className="flex justify-end gap-1.5">
+                        <button
+                          onClick={() => {
+                            setSelectedCustomerForAnalytics(c);
+                            setIsAnalyticsOpen(true);
+                          }}
+                          className="p-1.5 rounded-lg hover:bg-purple-50 dark:hover:bg-purple-950/20 text-purple-600 dark:text-purple-400"
+                          title="Customer Analytics"
+                        >
+                          <BarChart2 className="h-4 w-4" />
+                        </button>
                         <button
                           onClick={() => handleOpenHistory(c)}
-                          className="p-1.5 rounded-md hover:bg-blue-50 dark:hover:bg-blue-950/20 text-blue-600 dark:text-blue-400"
+                          className="p-1.5 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-950/20 text-blue-600 dark:text-blue-400"
                           title="Purchase History"
                         >
-                          <History className="h-3.5 w-3.5" />
+                          <History className="h-4 w-4" />
                         </button>
                         <button
                           onClick={() => handleOpenCustomer(c)}
-                          className="p-1.5 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-slate-800"
+                          className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-slate-800"
                         >
-                          <Edit2 className="h-3.5 w-3.5" />
+                          <Edit2 className="h-4 w-4" />
                         </button>
                         <button
                           onClick={() => handleDelete(c.id)}
-                          className="p-1.5 rounded-md hover:bg-red-50 dark:hover:bg-red-950/20 text-red-500 hover:text-red-700"
+                          className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/20 text-red-500 hover:text-red-700"
                         >
-                          <Trash2 className="h-3.5 w-3.5" />
+                          <Trash2 className="h-4 w-4" />
                         </button>
                       </div>
                     </TableCell>
@@ -292,18 +348,26 @@ export function CustomersPage() {
         </div>
       )}
 
+      {/* Customer Analytics Modal */}
+      <CustomerAnalyticsModal
+        isOpen={isAnalyticsOpen}
+        onClose={() => setIsAnalyticsOpen(false)}
+        customer={selectedCustomerForAnalytics}
+        currency={business?.currency || 'NGN'}
+      />
+
       {/* Customer Form Overlay Dialog */}
       <Dialog
         isOpen={isCustomerOpen}
         onClose={() => setIsCustomerOpen(false)}
-        title={editingCustomer ? 'Edit Customer Info' : 'Register Customer'}
+        title={editingCustomer ? 'Edit Customer Profile' : 'Register Customer'}
       >
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <Input
               label="First Name *"
               type="text"
-              placeholder="John"
+              placeholder="Joy"
               value={firstName}
               onChange={(e) => setFirstName(e.target.value)}
               disabled={isSubmitting}
@@ -312,7 +376,7 @@ export function CustomersPage() {
             <Input
               label="Last Name *"
               type="text"
-              placeholder="Doe"
+              placeholder="Obi"
               value={lastName}
               onChange={(e) => setLastName(e.target.value)}
               disabled={isSubmitting}
@@ -320,35 +384,50 @@ export function CustomersPage() {
             />
           </div>
 
-          <Input
-            label="Phone Number"
-            type="tel"
-            placeholder="+234..."
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            disabled={isSubmitting}
-          />
-
-          <Input
-            label="Email Address"
-            type="email"
-            placeholder="john.doe@example.com"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            disabled={isSubmitting}
-          />
-
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Address</label>
-            <textarea
-              placeholder="Residential or business location..."
-              value={address}
-              onChange={(e) => setAddress(e.target.value)}
+          <div className="grid grid-cols-2 gap-4">
+            <Input
+              label="Phone Number"
+              type="tel"
+              placeholder="080..."
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
               disabled={isSubmitting}
-              rows={2}
-              className="flex w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+            />
+            <Input
+              label="Email Address"
+              type="email"
+              placeholder="joy.obi@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              disabled={isSubmitting}
             />
           </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <Input
+              label="Loyalty Points Balance"
+              type="number"
+              value={loyaltyPoints}
+              onChange={(e) => setLoyaltyPoints(Number(e.target.value))}
+              disabled={isSubmitting}
+            />
+            <Input
+              label="Store Credit Balance (₦)"
+              type="number"
+              value={storeCredit}
+              onChange={(e) => setStoreCredit(Number(e.target.value))}
+              disabled={isSubmitting}
+            />
+          </div>
+
+          <Input
+            label="Customer Tags (comma separated)"
+            type="text"
+            placeholder="VIP, Wholesale, Regular, Corporate"
+            value={tagsInput}
+            onChange={(e) => setTagsInput(e.target.value)}
+            disabled={isSubmitting}
+          />
 
           <div className="space-y-1.5">
             <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Notes / Preferences</label>
@@ -358,7 +437,7 @@ export function CustomersPage() {
               onChange={(e) => setNotes(e.target.value)}
               disabled={isSubmitting}
               rows={2}
-              className="flex w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+              className="flex w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
             />
           </div>
 
@@ -445,6 +524,17 @@ export function CustomersPage() {
           </Table>
         )}
       </Dialog>
+
+      {/* Delete Customer Confirm Modal */}
+      <ConfirmModal
+        isOpen={!!deleteConfirmId}
+        onClose={() => setDeleteConfirmId(null)}
+        onConfirm={confirmDeleteCustomer}
+        title="Delete Customer"
+        message="Are you sure you want to delete this customer?"
+        confirmText="Delete"
+        variant="danger"
+      />
     </div>
   );
 }
