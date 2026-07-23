@@ -1,38 +1,50 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Bell, CheckCheck, AlertTriangle, Info, CheckCircle2, X } from 'lucide-react';
 import type { NotificationItem } from '@xyntra/types';
+import { useAuthStore } from '../stores/auth.store';
+import { productsApi } from '../features/products/services/products.api';
 
 export function NotificationCenter() {
+  const { business } = useAuthStore();
   const [isOpen, setIsOpen] = useState(false);
-  const [notifications, setNotifications] = useState<NotificationItem[]>([
-    {
-      id: 'n1',
-      business_id: 'b1',
-      title: 'Low Stock Alert',
-      message: 'Product "Wireless Barcode Scanner" is down to 2 units in stock.',
-      type: 'WARNING',
-      is_read: false,
-      created_at: new Date(Date.now() - 1000 * 60 * 25).toISOString(),
-    },
-    {
-      id: 'n2',
-      business_id: 'b1',
-      title: 'Daily Sales Milestone',
-      message: 'Congratulations! Today\'s store revenue crossed ₦250,000.',
-      type: 'SUCCESS',
-      is_read: false,
-      created_at: new Date(Date.now() - 1000 * 60 * 180).toISOString(),
-    },
-    {
-      id: 'n3',
-      business_id: 'b1',
-      title: 'System Update',
-      message: 'Phase 2 Business Growth Features are active and available.',
-      type: 'INFO',
-      is_read: true,
-      created_at: new Date(Date.now() - 1000 * 60 * 600).toISOString(),
-    },
-  ]);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    if (business?.id) {
+      loadNotifications();
+    }
+  }, [business?.id]);
+
+  const loadNotifications = async () => {
+    if (!business?.id) return;
+    setIsLoading(true);
+    try {
+      // Query low stock items for real notification alerts
+      const products = await productsApi.getProducts(business.id);
+      const lowStockThreshold = business.low_stock_threshold || 5;
+
+      const lowStockNotifications: NotificationItem[] = products
+        .filter((p) => p.stock_quantity <= lowStockThreshold)
+        .slice(0, 10)
+        .map((p) => ({
+          id: `low_stock_${p.id}`,
+          business_id: business.id,
+          title: 'Low Stock Alert',
+          message: `Product "${p.name}" is low on stock (${p.stock_quantity} left).`,
+          type: p.stock_quantity === 0 ? 'ERROR' : 'WARNING',
+          is_read: false,
+          created_at: p.updated_at || new Date().toISOString(),
+        }));
+
+      setNotifications(lowStockNotifications);
+    } catch (err) {
+      console.warn('Failed to load notifications:', err);
+      setNotifications([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const unreadCount = notifications.filter((n) => !n.is_read).length;
 
@@ -90,7 +102,9 @@ export function NotificationCenter() {
 
             {/* Notification items */}
             <div className="max-h-80 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800/60">
-              {notifications.length > 0 ? (
+              {isLoading ? (
+                <div className="py-8 text-center text-xs text-slate-400">Checking store alerts...</div>
+              ) : notifications.length > 0 ? (
                 notifications.map((item) => (
                   <div
                     key={item.id}
@@ -101,52 +115,51 @@ export function NotificationCenter() {
                     }`}
                   >
                     <div className="flex items-start gap-3">
-                      {item.type === 'WARNING' && (
-                        <div className="p-1.5 rounded-lg bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5">
-                          <AlertTriangle className="h-4 w-4" />
-                        </div>
-                      )}
-                      {item.type === 'SUCCESS' && (
-                        <div className="p-1.5 rounded-lg bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5">
-                          <CheckCircle2 className="h-4 w-4" />
-                        </div>
-                      )}
-                      {item.type === 'INFO' && (
-                        <div className="p-1.5 rounded-lg bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5">
-                          <Info className="h-4 w-4" />
-                        </div>
-                      )}
-                      <div>
-                        <p className="text-xs font-semibold text-slate-900 dark:text-slate-100">
+                      <div className="mt-0.5 shrink-0">
+                        {item.type === 'ERROR' && (
+                          <div className="p-1.5 rounded-lg bg-red-100 text-red-600 dark:bg-red-950/30 dark:text-red-400">
+                            <AlertTriangle className="h-4 w-4" />
+                          </div>
+                        )}
+                        {item.type === 'WARNING' && (
+                          <div className="p-1.5 rounded-lg bg-amber-100 text-amber-600 dark:bg-amber-950/30 dark:text-amber-400">
+                            <AlertTriangle className="h-4 w-4" />
+                          </div>
+                        )}
+                        {item.type === 'SUCCESS' && (
+                          <div className="p-1.5 rounded-lg bg-emerald-100 text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-400">
+                            <CheckCircle2 className="h-4 w-4" />
+                          </div>
+                        )}
+                        {item.type === 'INFO' && (
+                          <div className="p-1.5 rounded-lg bg-blue-100 text-blue-600 dark:bg-blue-950/30 dark:text-blue-400">
+                            <Info className="h-4 w-4" />
+                          </div>
+                        )}
+                      </div>
+                      <div className="space-y-1">
+                        <h4 className="font-semibold text-xs text-slate-900 dark:text-slate-100">
                           {item.title}
-                        </p>
-                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed">
-                          {item.message}
-                        </p>
-                        <p className="text-[10px] text-slate-400 mt-1">
+                        </h4>
+                        <p className="text-xs text-slate-500 leading-relaxed">{item.message}</p>
+                        <p className="text-[10px] text-slate-400">
                           {new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </p>
                       </div>
                     </div>
-
                     <button
                       onClick={() => removeNotification(item.id)}
-                      className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 rounded-md"
+                      className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
                     >
                       <X className="h-3.5 w-3.5" />
                     </button>
                   </div>
                 ))
               ) : (
-                <div className="py-8 text-center text-xs text-slate-400">
-                  No notifications yet.
+                <div className="py-12 text-center text-slate-400 text-xs italic">
+                  No unread notifications or low stock alerts.
                 </div>
               )}
-            </div>
-
-            {/* Footer */}
-            <div className="p-2.5 bg-slate-50 dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800 text-center text-[11px] font-medium text-slate-500">
-              Live Stock & Sales Notifications
             </div>
           </div>
         </>

@@ -20,6 +20,7 @@ import {
   Layers,
   Activity,
   AlertTriangle,
+  Users,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { ProfitReportTab } from '../components/ProfitReportTab';
@@ -589,6 +590,73 @@ export function ReportsPage() {
                       </TableCell>
                     </TableRow>
                   ))}
+                </TableBody>
+              </Table>
+            )}
+          </Card>
+
+          {/* Staff Sales Breakdown (Who Sold What) */}
+          <Card className="p-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
+            <div className="flex justify-between items-center">
+              <h4 className="text-sm font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+                <Users className="h-4 w-4 text-blue-600" />
+                Staff Sales Performance ("Who Sold What")
+              </h4>
+              <span className="text-xs text-slate-400 font-medium">Ranked by Revenue Generated</span>
+            </div>
+
+            {isLoading ? (
+              <div className="py-8 text-center text-xs text-slate-400">Loading staff sales data...</div>
+            ) : transactions.length === 0 ? (
+              <div className="py-12 text-center text-slate-400 text-xs italic">No sales recorded in selected period.</div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Cashier / Staff Member</TableHead>
+                    <TableHead className="text-center">Transactions Completed</TableHead>
+                    <TableHead className="text-right">Total Sales Generated</TableHead>
+                    <TableHead className="text-right">Contribution Share</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {(() => {
+                    const staffMap = new Map<string, { count: number; total: number }>();
+                    transactions.forEach((tx) => {
+                      const name = tx.cashier?.name || 'Walk-in Cashier';
+                      const curr = staffMap.get(name) || { count: 0, total: 0 };
+                      staffMap.set(name, { count: curr.count + 1, total: curr.total + tx.total });
+                    });
+
+                    const staffList = Array.from(staffMap.entries())
+                      .map(([name, data]) => ({ name, ...data }))
+                      .sort((a, b) => b.total - a.total);
+
+                    return staffList.map((s) => {
+                      const share = totalRevenue > 0 ? (s.total / totalRevenue) * 100 : 0;
+                      return (
+                        <TableRow key={s.name}>
+                          <TableCell className="font-semibold text-slate-900 dark:text-white text-xs">
+                            <div className="flex items-center gap-2">
+                              <div className="h-7 w-7 rounded-full bg-blue-100 dark:bg-blue-950 text-blue-600 dark:text-blue-400 font-bold flex items-center justify-center text-xs uppercase">
+                                {s.name.charAt(0)}
+                              </div>
+                              <span>{s.name}</span>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-center font-mono font-bold text-slate-800 dark:text-slate-200">
+                            {s.count} sales
+                          </TableCell>
+                          <TableCell className="text-right font-extrabold text-blue-600 dark:text-blue-400">
+                            ₦{s.total.toLocaleString()}
+                          </TableCell>
+                          <TableCell className="text-right font-medium text-slate-600 dark:text-slate-400">
+                            {share.toFixed(1)}%
+                          </TableCell>
+                        </TableRow>
+                      );
+                    });
+                  })()}
                 </TableBody>
               </Table>
             )}

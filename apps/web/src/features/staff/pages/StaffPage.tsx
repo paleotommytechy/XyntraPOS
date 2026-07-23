@@ -577,6 +577,7 @@ export function StaffPage() {
         <div className="animate-in fade-in duration-200">
           <ShiftClockWidget
             shifts={shifts}
+            staffMembers={staffList}
             isLoading={isLoading}
             onClockIn={handleClockIn}
             onClockOut={handleClockOut}

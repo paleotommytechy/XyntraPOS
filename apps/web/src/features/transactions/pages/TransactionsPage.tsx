@@ -20,6 +20,7 @@ import {
   Zap,
   AlertTriangle,
   RotateCcw,
+  User,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { ReturnModal } from '../components/ReturnModal';
@@ -429,6 +430,7 @@ export function TransactionsPage() {
                     <TableHead>Receipt Number</TableHead>
                     <TableHead>Date / Time</TableHead>
                     <TableHead>Customer</TableHead>
+                    <TableHead>Sold By (Cashier)</TableHead>
                     <TableHead>Payment Method</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="text-right">Total Amount</TableHead>
@@ -445,6 +447,12 @@ export function TransactionsPage() {
                         </TableCell>
                         <TableCell>{new Date(tx.created_at).toLocaleString()}</TableCell>
                         <TableCell>{tx.customer ? `${tx.customer.first_name} ${tx.customer.last_name}` : 'Walk-in Customer'}</TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1.5 text-xs text-slate-700 dark:text-slate-300 font-medium">
+                            <User className="h-3.5 w-3.5 text-blue-500 shrink-0" />
+                            <span>{tx.cashier?.name || 'Store Cashier'}</span>
+                          </div>
+                        </TableCell>
                         <TableCell className="flex items-center gap-1.5 mt-2">
                           <span className="text-xs bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded font-medium">
                             {firstPayment ? firstPayment.provider : 'Unknown'}

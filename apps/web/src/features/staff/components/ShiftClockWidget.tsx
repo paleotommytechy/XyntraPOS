@@ -1,8 +1,10 @@
-import { Clock, Play, Square, UserCheck } from 'lucide-react';
-import type { EmployeeShift } from '@xyntra/types';
+import { Clock, Play, Square, UserCheck, ShieldCheck, CheckCircle2, XCircle } from 'lucide-react';
+import type { EmployeeShift, UserProfile } from '@xyntra/types';
+import { usePermissions } from '../hooks/usePermissions';
 
 interface ShiftClockWidgetProps {
   shifts: EmployeeShift[];
+  staffMembers?: UserProfile[];
   isLoading: boolean;
   onClockIn: () => Promise<void>;
   onClockOut: (shiftId: string) => Promise<void>;
@@ -10,15 +12,78 @@ interface ShiftClockWidgetProps {
 
 export function ShiftClockWidget({
   shifts,
+  staffMembers = [],
   isLoading,
   onClockIn,
   onClockOut,
 }: ShiftClockWidgetProps) {
+  const { isAdmin } = usePermissions();
   const activeShift = shifts.find((s) => !s.clock_out);
+
+  // Group active shift status by staff user ID for Admin Overview
+  const activeShiftByUserMap = new Map<string, EmployeeShift>();
+  shifts.forEach((s) => {
+    if (!s.clock_out && s.user_id) {
+      activeShiftByUserMap.set(s.user_id, s);
+    }
+  });
 
   return (
     <div className="space-y-6">
-      {/* Clock in/out action banner */}
+      {/* Admin Live Shift Attendance Status Overview */}
+      {isAdmin && staffMembers.length > 0 && (
+        <div className="bg-gradient-to-r from-slate-900 to-slate-800 text-white rounded-2xl p-6 shadow-xl border border-slate-700 space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-blue-500/20 text-blue-400">
+                <ShieldCheck className="h-5 w-5" />
+              </div>
+              <div>
+                <h3 className="font-bold text-base text-white">Live Staff Attendance Matrix</h3>
+                <p className="text-xs text-slate-300">Real-time shift attendance status for all store team members</p>
+              </div>
+            </div>
+            <span className="px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+              {activeShiftByUserMap.size} Currently On Shift
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-2">
+            {staffMembers.map((staff) => {
+              const staffActiveShift = activeShiftByUserMap.get(staff.id);
+              return (
+                <div
+                  key={staff.id}
+                  className="p-3.5 rounded-xl bg-slate-800/80 border border-slate-700 flex items-center justify-between gap-3"
+                >
+                  <div className="flex items-center gap-3 truncate">
+                    <div className="h-9 w-9 rounded-full bg-slate-700 flex items-center justify-center font-bold text-xs uppercase text-slate-200 shrink-0">
+                      {staff.name ? staff.name.charAt(0) : 'U'}
+                    </div>
+                    <div className="truncate">
+                      <p className="font-semibold text-xs text-white truncate">{staff.name}</p>
+                      <p className="text-[10px] text-slate-400">{staff.role}</p>
+                    </div>
+                  </div>
+                  {staffActiveShift ? (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shrink-0">
+                      <CheckCircle2 className="h-3 w-3 text-emerald-400" />
+                      Clocked In
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-slate-700 text-slate-400 shrink-0">
+                      <XCircle className="h-3 w-3 text-slate-500" />
+                      Off Duty
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Personal Clock in/out action banner */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div className="flex items-center gap-4">
           <div
@@ -32,7 +97,7 @@ export function ShiftClockWidget({
           </div>
           <div>
             <h3 className="font-semibold text-slate-900 dark:text-slate-100">
-              Shift Attendance Status: {activeShift ? 'Clocked In (Active)' : 'Clocked Out'}
+              Your Attendance Status: {activeShift ? 'Clocked In (Active)' : 'Clocked Out'}
             </h3>
             <p className="text-xs text-slate-500 mt-0.5">
               {activeShift
@@ -68,7 +133,7 @@ export function ShiftClockWidget({
         <div className="p-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/20 flex items-center justify-between">
           <h4 className="font-semibold text-xs text-slate-900 dark:text-slate-100 flex items-center gap-2">
             <UserCheck className="h-4 w-4 text-blue-600" />
-            Shift Attendance History
+            Shift Attendance Logs & Records
           </h4>
           <span className="text-xs text-slate-400">{shifts.length} Shift Logs</span>
         </div>
@@ -107,7 +172,7 @@ export function ShiftClockWidget({
                           : 'bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-800'
                       }`}
                     >
-                      {shift.clock_out ? 'Completed' : 'Active'}
+                      {shift.clock_out ? 'Completed' : 'Active Shift'}
                     </span>
                   </td>
                 </tr>

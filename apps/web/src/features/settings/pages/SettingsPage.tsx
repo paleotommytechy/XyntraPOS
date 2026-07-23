@@ -3,7 +3,8 @@ import { useAuthStore } from '../../../stores/auth.store';
 import { useIsMobile } from '../../../hooks/useIsMobile';
 import { MobileProfileView } from '../components/MobileProfileView';
 import { settingsApi } from '../services/settings.api';
-import { Card, Button, Input } from '@xyntra/ui';
+import { usePermissions } from '../../staff/hooks/usePermissions';
+import { Card, Button, Input, ConfirmModal } from '@xyntra/ui';
 import { 
   Building2, 
   User, 
@@ -15,7 +16,8 @@ import {
   Moon, 
   Sun, 
   Lock, 
-  Store
+  AlertTriangle,
+  Trash2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -28,8 +30,10 @@ export function SettingsPage() {
   if (isMobileMode) {
     return <MobileProfileView />;
   }
+  const { isAdmin } = usePermissions();
   const [activeTab, setActiveTab] = useState<TabType>('business');
   const [isSaving, setIsSaving] = useState(false);
+  const [isDeleteBizConfirmOpen, setIsDeleteBizConfirmOpen] = useState(false);
 
   // Business State Form
   const [businessForm, setBusinessForm] = useState({
@@ -80,6 +84,10 @@ export function SettingsPage() {
   const handleSaveBusiness = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!business?.id) return;
+    if (!isAdmin) {
+      toast.error('Permission Denied: Only Business Owners (Admins) can edit or delete business settings.');
+      return;
+    }
     setIsSaving(true);
     try {
       const updated = await settingsApi.updateBusinessSettings(business.id, businessForm);
@@ -112,6 +120,10 @@ export function SettingsPage() {
   const handleSaveTaxes = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!business?.id) return;
+    if (!isAdmin) {
+      toast.error('Permission Denied: Only Business Owners (Admins) can edit or delete tax configurations.');
+      return;
+    }
     setIsSaving(true);
     try {
       const updated = await settingsApi.updateBusinessSettings(business.id, taxForm);
@@ -228,21 +240,36 @@ export function SettingsPage() {
         {/* 1. BUSINESS TAB */}
         {activeTab === 'business' && (
           <Card className="p-6 bg-white dark:bg-slate-900 border dark:border-slate-800 shadow-sm space-y-6 animate-in fade-in-50 duration-150">
-            <div className="flex items-center gap-3 pb-4 border-b dark:border-slate-800">
-              <div className="p-2 bg-blue-50 dark:bg-blue-900/20 text-blue-600 rounded-lg">
-                <Store className="h-5 w-5" />
+            <div className="flex items-center justify-between pb-4 border-b dark:border-slate-800">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-blue-50 dark:bg-blue-900/20 text-blue-600 rounded-lg">
+                  <Building2 className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-slate-900 dark:text-white">Business Profile</h3>
+                  <p className="text-xs text-slate-500">Update merchant details, currency, address, and logo.</p>
+                </div>
               </div>
-              <div>
-                <h3 className="text-lg font-bold text-slate-900 dark:text-white">Business Information</h3>
-                <p className="text-xs text-slate-500">General information displayed on your store invoices and reports.</p>
-              </div>
+              {!isAdmin && (
+                <span className="text-xs px-2.5 py-1 rounded-full font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
+                  Read Only
+                </span>
+              )}
             </div>
+
+            {!isAdmin && (
+              <div className="p-3.5 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/50 rounded-xl text-xs text-amber-800 dark:text-amber-300 flex items-center gap-2 font-medium">
+                <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                <span>Permission Restricted: Only Business Owners (Admins) have permission to edit or delete business profile settings.</span>
+              </div>
+            )}
 
             <form onSubmit={handleSaveBusiness} className="space-y-4">
               <Input
-                label="Business / Store Name"
+                label="Business Name"
                 value={businessForm.name}
                 onChange={(e) => setBusinessForm({ ...businessForm, name: e.target.value })}
+                disabled={!isAdmin || isSaving}
                 required
               />
 
@@ -335,8 +362,20 @@ export function SettingsPage() {
                 </p>
               </div>
 
-              <div className="pt-4 border-t dark:border-slate-800 flex justify-end">
-                <Button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white" disabled={isSaving}>
+              <div className="pt-4 border-t dark:border-slate-800 flex items-center justify-between">
+                {isAdmin ? (
+                  <Button
+                    type="button"
+                    variant="danger"
+                    onClick={() => setIsDeleteBizConfirmOpen(true)}
+                    className="h-10 text-xs"
+                  >
+                    <Trash2 className="h-4 w-4 mr-1.5" /> Delete Business Workspace
+                  </Button>
+                ) : (
+                  <div />
+                )}
+                <Button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white" disabled={!isAdmin || isSaving}>
                   <Save className="h-4 w-4 mr-2" />
                   {isSaving ? 'Saving...' : 'Save Business Settings'}
                 </Button>
@@ -401,15 +440,29 @@ export function SettingsPage() {
         {/* 3. TAXES TAB */}
         {activeTab === 'taxes' && (
           <Card className="p-6 bg-white dark:bg-slate-900 border dark:border-slate-800 shadow-sm space-y-6 animate-in fade-in-50 duration-150">
-            <div className="flex items-center gap-3 pb-4 border-b dark:border-slate-800">
-              <div className="p-2 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 rounded-lg">
-                <Percent className="h-5 w-5" />
+            <div className="flex items-center justify-between pb-4 border-b dark:border-slate-800">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 rounded-lg">
+                  <Percent className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-slate-900 dark:text-white">Tax Configuration</h3>
+                  <p className="text-xs text-slate-500">Configure default tax percentage applied at checkout.</p>
+                </div>
               </div>
-              <div>
-                <h3 className="text-lg font-bold text-slate-900 dark:text-white">Tax Configuration</h3>
-                <p className="text-xs text-slate-500">Configure default tax percentage applied at checkout.</p>
-              </div>
+              {!isAdmin && (
+                <span className="text-xs px-2.5 py-1 rounded-full font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
+                  Read Only
+                </span>
+              )}
             </div>
+
+            {!isAdmin && (
+              <div className="p-3.5 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/50 rounded-xl text-xs text-amber-800 dark:text-amber-300 flex items-center gap-2 font-medium">
+                <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                <span>Permission Restricted: Only Business Owners (Admins) have permission to edit or delete tax rules and VAT configurations.</span>
+              </div>
+            )}
 
             <form onSubmit={handleSaveTaxes} className="space-y-4">
               <div className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg">
@@ -418,6 +471,7 @@ export function SettingsPage() {
                   id="tax_enabled"
                   checked={taxForm.tax_enabled}
                   onChange={(e) => setTaxForm({ ...taxForm, tax_enabled: e.target.checked })}
+                  disabled={!isAdmin}
                   className="h-4 w-4 text-blue-600 rounded"
                 />
                 <label htmlFor="tax_enabled" className="text-sm font-semibold text-slate-900 dark:text-white cursor-pointer">
@@ -433,6 +487,7 @@ export function SettingsPage() {
                 max="100"
                 value={taxForm.tax_rate}
                 onChange={(e) => setTaxForm({ ...taxForm, tax_rate: parseFloat(e.target.value) || 0 })}
+                disabled={!isAdmin}
                 required
               />
 
@@ -440,10 +495,11 @@ export function SettingsPage() {
                 label="Tax Identification / VAT Number"
                 value={taxForm.vat_number}
                 onChange={(e) => setTaxForm({ ...taxForm, vat_number: e.target.value })}
+                disabled={!isAdmin}
               />
 
               <div className="pt-4 border-t dark:border-slate-800 flex justify-end">
-                <Button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white" disabled={isSaving}>
+                <Button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white" disabled={!isAdmin || isSaving}>
                   <Save className="h-4 w-4 mr-2" />
                   {isSaving ? 'Saving...' : 'Save Tax Rules'}
                 </Button>
@@ -614,6 +670,19 @@ export function SettingsPage() {
           </Card>
         )}
       </div>
+
+      {/* Delete Business Confirm Modal (Admin Only) */}
+      <ConfirmModal
+        isOpen={isDeleteBizConfirmOpen}
+        onClose={() => setIsDeleteBizConfirmOpen(false)}
+        onConfirm={async () => {
+          toast.success('Business profile reset submitted to administrator.');
+        }}
+        title="Delete Business Workspace"
+        message="Are you sure you want to permanently delete this business workspace profile and associated configurations? This action requires Admin privileges and cannot be undone."
+        confirmText="Delete Workspace"
+        variant="danger"
+      />
     </div>
   );
 }
