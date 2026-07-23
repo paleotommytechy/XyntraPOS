@@ -52,8 +52,8 @@ export function OnboardingPage() {
 
       setProfile(data.profile);
       setBusiness(data.business);
-      toast.success(`Business "${name}" registered successfully!`);
-      navigate('/dashboard');
+      toast.success(`Business "${name}" registered successfully! Please complete the interactive tutorial.`);
+      navigate('/tutorial');
     } catch (error: any) {
       toast.error(error.message || 'Failed to onboard business workspace');
     } finally {
@@ -79,9 +79,9 @@ export function OnboardingPage() {
       setProfile(data.profile);
       setBusiness(data.business);
       toast.success(
-        `Validated! Joined "${data.business.name}" with assigned role: ${data.profile.role}`
+        `Validated! Joined "${data.business.name}" with assigned role: ${data.profile.role}. Please complete the interactive tutorial.`
       );
-      navigate('/dashboard');
+      navigate('/tutorial');
     } catch (error: any) {
       toast.error(error.message || 'Failed to validate staff access code');
     } finally {

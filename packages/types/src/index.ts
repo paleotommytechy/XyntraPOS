@@ -27,6 +27,7 @@ export interface UserProfile {
   role: 'Admin' | 'Manager' | 'Cashier';
   business_id: string;
   status?: 'Active' | 'Inactive' | 'Pending Approval';
+  has_completed_tutorial?: boolean;
   created_at: string;
 }
 

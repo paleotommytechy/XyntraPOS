@@ -17,6 +17,8 @@ import { ReportsPage } from '../features/reports/pages/ReportsPage';
 import { StaffPage } from '../features/staff/pages/StaffPage';
 import { SettingsPage } from '../features/settings/pages/SettingsPage';
 
+import { TutorialPage } from '../features/tutorial/pages/TutorialPage';
+
 export function AppRoutes() {
   const { user } = useAuthStore();
 
@@ -30,8 +32,9 @@ export function AppRoutes() {
         <Route path="/reset-password" element={<ResetPasswordPage />} />
       </Route>
 
-      {/* Onboarding Route */}
+      {/* Onboarding & Compulsory Tutorial Routes */}
       <Route path="/onboarding" element={<OnboardingPage />} />
+      <Route path="/tutorial" element={<TutorialPage />} />
 
       {/* Protected Merchant Workspace Routes */}
       <Route element={<DashboardLayout />}>

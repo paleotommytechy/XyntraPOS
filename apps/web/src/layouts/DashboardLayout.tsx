@@ -20,6 +20,7 @@ import {
   Search,
   Clock,
   Smartphone,
+  Sparkles,
 } from 'lucide-react';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { MobileLayout } from './MobileLayout';
@@ -80,6 +81,15 @@ export function DashboardLayout() {
         </div>
       </div>
     );
+  }
+
+  // Compulsory Onboarding Tutorial Guard: Redirect new users to /tutorial
+  const hasCompletedTutorial =
+    profile?.has_completed_tutorial ||
+    localStorage.getItem(`xyntra_tutorial_completed_${profile?.id || user?.id}`) === 'true';
+
+  if (!hasCompletedTutorial) {
+    return <Navigate to="/tutorial" replace />;
   }
 
   // Render Mobile Layout when on mobile viewport and not in desktop override mode
@@ -199,6 +209,16 @@ export function DashboardLayout() {
               <Clock className="h-3.5 w-3.5" />
               <span>{isClockedIn ? 'Clocked In (Active Shift)' : 'Clocked Out'}</span>
             </button>
+
+            {/* App Tutorial button */}
+            <Link
+              to="/tutorial"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 hover:bg-blue-100 transition-colors"
+              title="Replay Interactive App Tutorial"
+            >
+              <Sparkles className="h-3.5 w-3.5 text-blue-500" />
+              <span>App Tutorial</span>
+            </Link>
 
             {/* Notification Center */}
             <NotificationCenter />
