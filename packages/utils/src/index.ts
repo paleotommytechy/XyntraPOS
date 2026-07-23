@@ -20,7 +20,9 @@ export function formatCurrency(amount: number, currencyCode: string = 'NGN'): st
       currency: currencyCode.toUpperCase(),
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
-    }).format(amount);
+    })
+      .format(amount)
+      .replace(/\u00a0/g, ' ');
   } catch {
     // Fallback format if the currency is unrecognized
     return `${currencyCode.toUpperCase()} ${amount.toFixed(2)}`;
@@ -69,3 +71,6 @@ export function generateRandomCode(prefix: string = 'ITEM', length: number = 8):
   }
   return `${prefix.toUpperCase()}-${result}`;
 }
+
+export * from './webhook-security';
+

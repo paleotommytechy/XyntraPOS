@@ -5,6 +5,9 @@ import { Toaster } from 'sonner';
 import { AppRoutes } from './routes';
 import { useAuthStore } from './stores/auth.store';
 import { authApi } from './features/auth/services/auth.api';
+import { ErrorBoundary } from './components/ErrorBoundary';
+import { monitoring } from './lib/monitoring';
+import { XyntraSpinner } from './components/XyntraSpinner';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -15,12 +18,12 @@ const queryClient = new QueryClient({
   },
 });
 
-import { XyntraSpinner } from './components/XyntraSpinner';
-
 function App() {
   const { isLoading, setSession, setLoading, theme } = useAuthStore();
 
   useEffect(() => {
+    monitoring.init();
+
     // Initial theme synchronization to document node
     if (theme === 'dark') {
       document.documentElement.classList.add('dark');
@@ -52,12 +55,14 @@ function App() {
   }
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <AppRoutes />
-        <Toaster position="top-right" richColors closeButton />
-      </BrowserRouter>
-    </QueryClientProvider>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <BrowserRouter>
+          <AppRoutes />
+          <Toaster position="top-right" richColors closeButton />
+        </BrowserRouter>
+      </QueryClientProvider>
+    </ErrorBoundary>
   );
 }
 
