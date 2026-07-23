@@ -87,6 +87,37 @@ export const onboardingApi = {
     const fullCode = rawCode.startsWith('XYN-') ? rawCode : `XYN-${rawCode}`;
     const shortCode = rawCode.replace(/^XYN-/, '');
 
+    // Tier 0: Execute PostgreSQL Security Definer RPC function claim_staff_invitation_code
+    try {
+      const { data: rpcRes, error: rpcErr } = await supabase.rpc('claim_staff_invitation_code', {
+        p_user_id: userId,
+        p_code: rawCode,
+        p_email: cleanEmail,
+      });
+
+      if (!rpcErr && rpcRes) {
+        if (rpcRes.success && rpcRes.business) {
+          const business = rpcRes.business as Business;
+          const profile: UserProfile = {
+            id: userId,
+            business_id: business.id,
+            role: rpcRes.role || 'Cashier',
+            name: rpcRes.invitation?.name || userEmail.split('@')[0],
+            email: cleanEmail,
+            status: 'Pending Approval',
+            created_at: new Date().toISOString(),
+          };
+          return { business, profile };
+        } else if (rpcRes.error) {
+          throw new Error(rpcRes.error);
+        }
+      }
+    } catch (rpcEx: any) {
+      if (rpcEx.message && !rpcEx.message.includes('function') && !rpcEx.message.includes('find')) {
+        throw rpcEx;
+      }
+    }
+
     let matchedInvitation: any = null;
 
     // A) Tier 1: Check localStorage for codes created in current workspace/browser
@@ -108,22 +139,36 @@ export const onboardingApi = {
       console.warn('localStorage lookup exception:', e);
     }
 
-    // B) Tier 2: Query Supabase staff_invitations table
+    // B) Tier 2: Query Supabase staff_invitations table safely
     if (!matchedInvitation) {
       try {
         const { data: invList } = await supabase
           .from('staff_invitations')
           .select('*')
-          .eq('status', 'Pending');
+          .or(`token.eq.${rawCode},token.eq.${shortCode},token.eq.${fullCode}`)
+          .in('status', ['Pending', 'Awaiting Approval']);
 
         if (invList && invList.length > 0) {
-          matchedInvitation = invList.find((inv: any) => {
-            const tUpper = (inv.token || '').toUpperCase();
-            return tUpper === fullCode || tUpper === rawCode || tUpper === shortCode;
-          });
+          matchedInvitation = invList[0];
         }
       } catch (e) {
-        console.warn('Supabase staff_invitations query exception:', e);
+        console.warn('Supabase staff_invitations token lookup warning:', e);
+      }
+    }
+
+    if (!matchedInvitation && cleanEmail) {
+      try {
+        const { data: invListByEmail } = await supabase
+          .from('staff_invitations')
+          .select('*')
+          .eq('email', cleanEmail)
+          .in('status', ['Pending', 'Awaiting Approval']);
+
+        if (invListByEmail && invListByEmail.length > 0) {
+          matchedInvitation = invListByEmail[0];
+        }
+      } catch (e) {
+        console.warn('Supabase staff_invitations email lookup warning:', e);
       }
     }
 
@@ -151,14 +196,20 @@ export const onboardingApi = {
       }
     }
 
-    // D) Tier 4: Direct Business Code fallback
+    // D) Tier 4: Direct Business Code fallback (Only query UUID if code is valid UUID string to prevent 400 Bad Request)
     if (!matchedInvitation) {
       try {
-        let { data: bizData } = await supabase
-          .from('businesses')
-          .select('*')
-          .eq('id', rawCode)
-          .maybeSingle();
+        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawCode);
+        let bizData: any = null;
+
+        if (isUuid) {
+          const { data } = await supabase
+            .from('businesses')
+            .select('*')
+            .eq('id', rawCode)
+            .maybeSingle();
+          bizData = data;
+        }
 
         if (!bizData) {
           const { data: nameMatch } = await supabase
@@ -220,10 +271,11 @@ export const onboardingApi = {
 
     const business = targetBiz as Business;
 
-    // Update user profile with business_id and assigned role
+    // Update user profile with business_id, assigned role, and Pending Approval status
     const updatePayload: any = {
       business_id: business.id,
       role: assignedRole,
+      status: 'Pending Approval',
     };
     if (assignedName) updatePayload.name = assignedName;
     if (cleanEmail) updatePayload.email = cleanEmail;
@@ -243,21 +295,22 @@ export const onboardingApi = {
         role: assignedRole,
         name: assignedName || userEmail.split('@')[0],
         email: cleanEmail,
+        status: 'Pending Approval',
         created_at: new Date().toISOString(),
       };
     } else {
       profile = profData as UserProfile;
     }
 
-    // Burn one-time code (Mark invitation accepted in DB & localStorage)
+    // Mark invitation status as Awaiting Approval (requiring Business Owner approval)
     if (matchedInvitation.id) {
       try {
         await supabase
           .from('staff_invitations')
-          .update({ status: 'Accepted' })
+          .update({ status: 'Awaiting Approval' })
           .eq('id', matchedInvitation.id);
       } catch (e) {
-        console.warn('DB burn code warning:', e);
+        console.warn('DB update invitation status warning:', e);
       }
     }
 
@@ -268,7 +321,7 @@ export const onboardingApi = {
         localInvites = localInvites.map((inv) => {
           const tUpper = (inv.token || '').toUpperCase();
           if (tUpper === fullCode || tUpper === rawCode || tUpper === shortCode) {
-            return { ...inv, status: 'Accepted' };
+            return { ...inv, status: 'Awaiting Approval' };
           }
           return inv;
         });
