@@ -35,11 +35,15 @@ export const onboardingApi = {
     // 2. Link Business to Admin Profile immediately to satisfy RLS for subsequent inserts
     const { data: profData, error: profError } = await supabase
       .from('profiles')
-      .update({
-        business_id: business.id,
-        role: 'Admin',
-      })
-      .eq('id', userId)
+      .upsert(
+        {
+          id: userId,
+          name: 'Merchant Admin',
+          business_id: business.id,
+          role: 'Admin',
+        },
+        { onConflict: 'id' }
+      )
       .select()
       .single();
 

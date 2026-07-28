@@ -25,11 +25,17 @@ import {
   CreditCard,
   Keyboard,
   Award,
+  WifiOff,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { DraftOrdersModal } from '../components/DraftOrdersModal';
 import { SplitPaymentModal } from '../components/SplitPaymentModal';
 import { KeyboardShortcutsModal } from '../components/KeyboardShortcutsModal';
+import { ThermalReceiptModal } from '../components/ThermalReceiptModal';
+import { useOnlineStatus } from '../../../hooks/useOnlineStatus';
+import { useBarcodeScanner } from '../../../hooks/useBarcodeScanner';
+import { useRealtimeSubscription } from '../../../hooks/useRealtimeSubscription';
+import { posSyncManager } from '../services/posSyncManager';
 
 export function POSPage() {
   const { isMobileMode } = useIsMobile();
@@ -87,6 +93,47 @@ export function POSPage() {
     onSubmit: () => {},
   });
 
+  // Offline Queue & Connectivity State
+  const isOnline = useOnlineStatus();
+  const [offlineQueueCount, setOfflineQueueCount] = useState(0);
+
+  useEffect(() => {
+    posSyncManager.initAutoSync();
+    setOfflineQueueCount(posSyncManager.getQueue().length);
+  }, [isOnline]);
+
+  // Realtime Supabase product catalog listener
+  useRealtimeSubscription({
+    table: 'products',
+    businessId: business?.id,
+    onPayload: () => {
+      loadPOSData();
+    },
+    enabled: !!business?.id,
+  });
+
+  // Barcode Scanner hardware listener
+  useBarcodeScanner({
+    onScan: (code) => {
+      const match = products.find(
+        (p) =>
+          (p.barcode && p.barcode.toLowerCase() === code.toLowerCase()) ||
+          p.sku.toLowerCase() === code.toLowerCase()
+      );
+      if (match) {
+        if (match.stock_quantity > 0) {
+          addToCart(match);
+          toast.success(`Scanned: ${match.name}`);
+        } else {
+          toast.error(`Scanned item "${match.name}" is Out of Stock!`);
+        }
+      } else {
+        toast.error(`No product found matching scanned barcode "${code}"`);
+      }
+    },
+    enabled: !isCheckoutOpen && !isDraftsModalOpen && !isSplitPaymentOpen,
+  });
+
   // Checkout states
   const [paymentProvider, setPaymentProvider] = useState<'Paystack' | 'Cash' | 'Transfer' | 'Card' | 'Store Credit'>('Cash');
   const [paymentMethod, setPaymentMethod] = useState('Cash Payment');
@@ -108,9 +155,6 @@ export function POSPage() {
   const [custLastName, setCustLastName] = useState('');
   const [custPhone, setCustPhone] = useState('');
   const [isSubmittingCustomer, setIsSubmittingCustomer] = useState(false);
-
-  // Print ref
-  const receiptRef = useRef<HTMLDivElement>(null);
 
   // Hotkey listener for POS
   useEffect(() => {
@@ -283,23 +327,68 @@ export function POSPage() {
         total: item.product.selling_price * item.quantity,
       }));
 
-      const transaction = await posApi.checkout(
-        {
-          business_id: business.id,
-          cashier_id: profile.id,
-          customer_id: customerId || undefined,
+      const checkoutInput = {
+        business_id: business.id,
+        cashier_id: profile.id,
+        customer_id: customerId || undefined,
+        subtotal,
+        discount: discountAmount,
+        tax: taxAmount,
+        total: grandTotal,
+        payment_provider: paymentProvider as any,
+        payment_method: paymentMethod,
+        payment_status: payStatus,
+        transaction_status: txStatus,
+        payment_reference: payRef || `REF-${Date.now().toString().slice(-6)}`,
+      };
+
+      let transaction: any;
+
+      if (!isOnline) {
+        const queued = posSyncManager.enqueue(checkoutInput, itemsPayload);
+        setOfflineQueueCount(posSyncManager.getQueue().length);
+        transaction = {
+          id: queued.id,
+          receipt_number: `INV-OFFLINE-${Date.now().toString().slice(-4)}`,
+          created_at: new Date().toISOString(),
           subtotal,
           discount: discountAmount,
           tax: taxAmount,
           total: grandTotal,
-          payment_provider: paymentProvider as any,
-          payment_method: paymentMethod,
           payment_status: payStatus,
           transaction_status: txStatus,
-          payment_reference: payRef || `REF-${Date.now().toString().slice(-6)}`,
-        },
-        itemsPayload
-      );
+          items: cartItems.map((ci) => ({
+            product: ci.product,
+            quantity: ci.quantity,
+            total: ci.product.selling_price * ci.quantity,
+          })),
+        };
+        toast.info('Network offline. Sale saved to Local Offline Queue! Will auto-sync when online.');
+      } else {
+        try {
+          transaction = await posApi.checkout(checkoutInput, itemsPayload);
+        } catch (err: any) {
+          const queued = posSyncManager.enqueue(checkoutInput, itemsPayload);
+          setOfflineQueueCount(posSyncManager.getQueue().length);
+          transaction = {
+            id: queued.id,
+            receipt_number: `INV-OFFLINE-${Date.now().toString().slice(-4)}`,
+            created_at: new Date().toISOString(),
+            subtotal,
+            discount: discountAmount,
+            tax: taxAmount,
+            total: grandTotal,
+            payment_status: payStatus,
+            transaction_status: txStatus,
+            items: cartItems.map((ci) => ({
+              product: ci.product,
+              quantity: ci.quantity,
+              total: ci.product.selling_price * ci.quantity,
+            })),
+          };
+          toast.info('Network issue encountered. Sale saved to Local Offline Queue!');
+        }
+      }
 
       setCompletedTransaction(transaction);
       toast.success(
@@ -434,43 +523,6 @@ export function POSPage() {
     }
   };
 
-  const handlePrintReceipt = () => {
-    const printContent = receiptRef.current?.innerHTML;
-    const windowUrl = 'about:blank';
-    const uniqueName = new Date().getTime();
-    const windowName = `PrintWindow_${uniqueName}`;
-    
-    const printWindow = window.open(windowUrl, windowName, 'left=5000,top=5000,width=0,height=0');
-    if (printWindow && printContent) {
-      printWindow.document.write(`
-        <html>
-          <head>
-            <title>Print Receipt</title>
-            <style>
-              body { font-family: monospace; padding: 20px; font-size: 12px; line-height: 1.4; color: #000; width: 80mm; margin: 0 auto; }
-              .text-center { text-align: center; }
-              .divider { border-top: 1px dashed #000; margin: 10px 0; }
-              table { width: 100%; border-collapse: collapse; }
-              th { text-align: left; }
-              .text-right { text-align: right; }
-              .font-bold { font-weight: bold; }
-            </style>
-          </head>
-          <body>
-            ${printContent}
-            <script>
-              window.onload = function() {
-                window.print();
-                window.close();
-              }
-            </script>
-          </body>
-        </html>
-      `);
-      printWindow.document.close();
-    }
-  };
-
   const filteredProducts = products.filter((p) => {
     const matchesSearch =
       p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -516,6 +568,20 @@ export function POSPage() {
       <div className="flex-1 flex flex-col min-w-0 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-sm">
         {/* Search and Filters toolbar */}
         <div className="p-4 border-b border-slate-200 dark:border-slate-800 space-y-3">
+          {!isOnline && (
+            <div className="p-2.5 bg-amber-500 text-white rounded-xl text-xs font-bold flex items-center justify-between shadow-sm animate-pulse">
+              <div className="flex items-center gap-2">
+                <WifiOff className="w-4 h-4" />
+                <span>Offline Mode Active • Sales will queue locally</span>
+              </div>
+              {offlineQueueCount > 0 && (
+                <span className="bg-amber-700 px-2 py-0.5 rounded-md text-[11px]">
+                  {offlineQueueCount} Queued Sale(s)
+                </span>
+              )}
+            </div>
+          )}
+
           <div className="flex items-center gap-3">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
@@ -1096,119 +1162,15 @@ export function POSPage() {
       </Dialog>
 
       {/* Thermal Receipt Dialog Modal */}
-      <Dialog
+      <ThermalReceiptModal
         isOpen={isReceiptOpen}
         onClose={() => setIsReceiptOpen(false)}
-        title="Receipt Invoice"
-        className="max-w-sm"
-      >
-        {completedTransaction && (
-          <div className="space-y-6">
-            <div className="bg-slate-50 dark:bg-slate-900 border dark:border-slate-800 p-4 rounded-xl">
-              <div ref={receiptRef} className="text-slate-950 dark:text-slate-200">
-                <div className="text-center space-y-1">
-                  <h3 className="text-sm font-bold uppercase tracking-wider">
-                    {business?.name || 'XyntraPOS Shop'}
-                  </h3>
-                  <p className="text-[10px] text-slate-500">
-                    {business?.address || 'Lagos, Nigeria'}
-                  </p>
-                  <p className="text-[10px] text-slate-500">
-                    Phone: {business?.phone || 'N/A'}
-                  </p>
-                </div>
-
-                <div className="border-t border-dashed border-slate-300 dark:border-slate-700 my-3" />
-
-                <div className="text-[10px] space-y-1 text-slate-600 dark:text-slate-400">
-                  <div className="flex justify-between">
-                    <span>Receipt No:</span>
-                    <span className="font-mono font-bold">{completedTransaction.receipt_number}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Date:</span>
-                    <span>{new Date(completedTransaction.created_at).toLocaleString()}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Cashier:</span>
-                    <span>{profile?.name || 'Admin'}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Customer:</span>
-                    <span>
-                      {selectedCustomer
-                        ? `${selectedCustomer.first_name} ${selectedCustomer.last_name}`
-                        : 'Walk-in'}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="border-t border-dashed border-slate-300 dark:border-slate-700 my-3" />
-
-                <table className="w-full text-[10px]">
-                  <thead>
-                    <tr className="border-b border-dashed border-slate-300 dark:border-slate-700">
-                      <th className="pb-1">Item</th>
-                      <th className="pb-1 text-center">Qty</th>
-                      <th className="pb-1 text-right">Price</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {cartItems.map((item) => (
-                      <tr key={item.product.id}>
-                        <td className="py-1 max-w-[120px] truncate">{item.product.name}</td>
-                        <td className="py-1 text-center">{item.quantity}</td>
-                        <td className="py-1 text-right">
-                          ₦{(item.product.selling_price * item.quantity).toLocaleString()}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-
-                <div className="border-t border-dashed border-slate-300 dark:border-slate-700 my-3" />
-
-                <div className="text-[10px] space-y-1 text-slate-600 dark:text-slate-400">
-                  <div className="flex justify-between">
-                    <span>Subtotal:</span>
-                    <span>₦{completedTransaction.subtotal?.toLocaleString()}</span>
-                  </div>
-                  {completedTransaction.discount > 0 && (
-                    <div className="flex justify-between text-red-500">
-                      <span>Discount:</span>
-                      <span>- ₦{completedTransaction.discount?.toLocaleString()}</span>
-                    </div>
-                  )}
-                  <div className="flex justify-between">
-                    <span>Tax:</span>
-                    <span>+ ₦{completedTransaction.tax?.toLocaleString()}</span>
-                  </div>
-                  <div className="flex justify-between font-bold text-xs text-slate-900 dark:text-white pt-1">
-                    <span>Grand Total:</span>
-                    <span>₦{completedTransaction.total?.toLocaleString()}</span>
-                  </div>
-                </div>
-
-                <div className="border-t border-dashed border-slate-300 dark:border-slate-700 my-3" />
-
-                <div className="text-center text-[9px] text-slate-500 font-semibold uppercase tracking-wider">
-                  Thank you for shopping with us!
-                </div>
-              </div>
-            </div>
-
-            <div className="flex gap-3">
-              <Button variant="secondary" className="flex-1" onClick={handlePrintReceipt}>
-                <FileText className="h-4 w-4 mr-2" />
-                Print Receipt
-              </Button>
-              <Button className="flex-1" onClick={() => setIsReceiptOpen(false)}>
-                Close Invoice
-              </Button>
-            </div>
-          </div>
-        )}
-      </Dialog>
+        transaction={completedTransaction}
+        businessName={business?.name}
+        businessAddress={business?.address}
+        businessPhone={business?.phone}
+        currency={business?.currency}
+      />
 
       {/* Prompt Modal */}
       <PromptModal

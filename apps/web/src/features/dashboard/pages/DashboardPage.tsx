@@ -18,6 +18,8 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 
+import { useRealtimeSubscription } from '../../../hooks/useRealtimeSubscription';
+
 export function DashboardPage() {
   const { isMobileMode } = useIsMobile();
   const { business } = useAuthStore();
@@ -28,6 +30,17 @@ export function DashboardPage() {
   }
   const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Subscribe to live sales/transactions on Supabase
+  useRealtimeSubscription({
+    table: 'transactions',
+    businessId: business?.id,
+    toastMessage: 'New POS checkout detected! Updating dashboard metrics...',
+    onPayload: () => {
+      loadDashboard();
+    },
+    enabled: !!business?.id,
+  });
 
   useEffect(() => {
     if (business?.id) {

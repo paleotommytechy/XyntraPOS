@@ -6,6 +6,7 @@ import { LoginPage } from '../features/auth/pages/LoginPage';
 import { RegisterPage } from '../features/auth/pages/RegisterPage';
 import { ForgotPasswordPage } from '../features/auth/pages/ForgotPasswordPage';
 import { ResetPasswordPage } from '../features/auth/pages/ResetPasswordPage';
+import { AuthCallbackPage } from '../features/auth/pages/AuthCallbackPage';
 import { OnboardingPage } from '../features/onboarding/pages/OnboardingPage';
 import { DashboardPage } from '../features/dashboard/pages/DashboardPage';
 import { ProductsPage } from '../features/products/pages/ProductsPage';
@@ -24,6 +25,9 @@ export function AppRoutes() {
 
   return (
     <Routes>
+      {/* OAuth Callback Route */}
+      <Route path="/auth/callback" element={<AuthCallbackPage />} />
+
       {/* Auth Routes */}
       <Route element={<AuthLayout />}>
         <Route path="/login" element={<LoginPage />} />

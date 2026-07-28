@@ -25,6 +25,8 @@ import {
 import { toast } from 'sonner';
 import { ReturnModal } from '../components/ReturnModal';
 
+import { useRealtimeSubscription } from '../../../hooks/useRealtimeSubscription';
+
 export function TransactionsPage() {
   const { isMobileMode } = useIsMobile();
   const { business, profile } = useAuthStore();
@@ -36,6 +38,18 @@ export function TransactionsPage() {
   const [transactions, setTransactions] = useState<FullTransaction[]>([]);
   const [returnsList, setReturnsList] = useState<ReturnRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Subscribe to live transactions
+  useRealtimeSubscription({
+    table: 'transactions',
+    businessId: business?.id,
+    onPayload: () => {
+      if (business?.id) {
+        transactionsApi.getTransactions(business.id).then(setTransactions);
+      }
+    },
+    enabled: !!business?.id,
+  });
 
   // Tabs
   const [activeTab, setActiveTab] = useState<'sales' | 'returns'>('sales');

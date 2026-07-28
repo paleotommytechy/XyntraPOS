@@ -12,5 +12,13 @@ if (!supabaseUrl || !supabaseAnonKey) {
 // Initialize the Supabase client. Fall back to standard defaults if environment keys are missing or set to defaults.
 export const supabase = createClient(
   supabaseUrl || 'http://localhost:54321',
-  supabaseAnonKey || 'local-anon-key-placeholder'
+  supabaseAnonKey || 'local-anon-key-placeholder',
+  {
+    auth: {
+      autoRefreshToken: true,
+      persistSession: true,
+      detectSessionInUrl: true,
+      flowType: 'pkce',
+    },
+  }
 );

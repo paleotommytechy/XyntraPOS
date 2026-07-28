@@ -142,7 +142,7 @@ export const authApi = {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: `${window.location.origin}/dashboard`,
+        redirectTo: `${window.location.origin}/auth/callback`,
       },
     });
     if (error) throw error;
@@ -170,16 +170,54 @@ export const authApi = {
     if (error || !session?.user) return null;
 
     try {
-      const { data: profile } = await supabase
+      let { data: profile } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', session.user.id)
         .maybeSingle();
 
-      if (!profile) return { user: session.user, profile: null, business: null };
+      // Auto-provision profile for OAuth / Google sign-in users if missing in DB
+      if (!profile) {
+        const name =
+          session.user.user_metadata?.full_name ||
+          session.user.user_metadata?.name ||
+          session.user.email?.split('@')[0] ||
+          'Merchant User';
+        const avatar =
+          session.user.user_metadata?.avatar_url ||
+          session.user.user_metadata?.picture ||
+          null;
+
+        const { data: newProfile } = await supabase
+          .from('profiles')
+          .upsert(
+            {
+              id: session.user.id,
+              name,
+              avatar,
+              role: 'Admin',
+            },
+            { onConflict: 'id' }
+          )
+          .select()
+          .maybeSingle();
+
+        if (newProfile) {
+          profile = newProfile;
+        } else {
+          profile = {
+            id: session.user.id,
+            name,
+            avatar,
+            role: 'Admin',
+            business_id: '',
+            created_at: new Date().toISOString(),
+          };
+        }
+      }
 
       let business: Business | null = null;
-      if (profile.business_id) {
+      if (profile?.business_id) {
         const { data: biz } = await supabase
           .from('businesses')
           .select('*')
@@ -190,8 +228,9 @@ export const authApi = {
       }
 
       return { user: session.user, profile: profile as UserProfile, business };
-    } catch {
-      return null;
+    } catch (err) {
+      console.error('getCurrentSession exception:', err);
+      return { user: session.user, profile: null, business: null };
     }
   },
 };
