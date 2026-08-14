@@ -13,5 +13,5 @@ jobs:
       - name: Ping Supabase Rest API
         run: |
           # Append a table name to the URL, or use a health endpoint
-          curl -i -X GET "${{ secrets.PROD_SUPABASE_URL }}/rest/v1/profiles?limit=1" \
-          -H "apikey: ${{ secrets.PROD_SUPABASE_ANON_KEY }}"
+          curl -i -X GET "${{ secrets.SUPABASE_URL }}/rest/v1/profiles?limit=1" \
+          -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}"
