@@ -14,5 +14,4 @@ jobs:
         run: |
           # Append a table name to the URL, or use a health endpoint
           curl -i -X GET "${{ secrets.PROD_SUPABASE_URL }}/rest/v1/projects?limit=1" \
-          -H "apikey: ${{ secrets.PROD_SUPABASE_ANON_KEY }}" \
-          -H "Authorization: Bearer ${{ secrets.PROD_SUPABASE_ANON_KEY }}"
+          -H "apikey: ${{ secrets.PROD_SUPABASE_ANON_KEY }}"
