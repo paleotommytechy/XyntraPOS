@@ -1,0 +1,18 @@
+name: Keep Supabase Awake
+
+on:
+  schedule:
+    # Runs at 00:00 UTC every Tuesday and Friday
+    - cron: '0 0 * * 2,5'
+  workflow_dispatch: # Allows manual testing
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase Rest API
+        run: |
+          # Append a table name to the URL, or use a health endpoint
+          curl -i -X GET "${{ secrets.SUPABASE_URL }}/rest/v1/projects?limit=1" \
+          -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
+          -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}"
